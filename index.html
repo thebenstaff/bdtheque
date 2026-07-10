@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Ma BDthèque">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<title>Ma BDthèque — V-B.1.2.1</title>
+<style>
+:root{
+  --ink:#22242b;        /* encre */
+  --paper:#f6f3ec;      /* papier */
+  --panel:#ffffff;      /* case de planche */
+  --red:#d9403a;        /* rouge kiosque */
+  --blue:#2c5f8a;       /* bleu ligne claire */
+  --gold:#c8922e;       /* dorure de tranche */
+  --muted:#8a8578;
+  --ok:#3a7d54;
+  --radius:10px;
+  --shadow:0 2px 8px rgba(34,36,43,.10);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{font-size:16px}
+body{
+  font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+  background:var(--paper);color:var(--ink);
+  padding-bottom:calc(72px + env(safe-area-inset-bottom));
+  min-height:100vh;
+}
+h1,h2,h3,.display{font-family:'Avenir Next Condensed','Arial Narrow',-apple-system,sans-serif;letter-spacing:.02em}
+
+/* ---------- En-tête ---------- */
+header{
+  background:var(--ink);color:var(--paper);
+  padding:calc(12px + env(safe-area-inset-top)) 16px 12px;
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:center;gap:10px;
+}
+header h1{font-size:1.35rem;text-transform:uppercase;flex:1}
+header h1 span{color:var(--red)}
+.hbtn{
+  background:transparent;border:1.5px solid var(--paper);color:var(--paper);
+  border-radius:8px;padding:7px 10px;font-size:.85rem;font-weight:600;
+}
+/* ---------- Barre d'onglets ---------- */
+nav{
+  position:fixed;bottom:0;left:0;right:0;z-index:30;
+  background:var(--ink);display:flex;
+  padding-bottom:env(safe-area-inset-bottom);
+  box-shadow:0 -2px 10px rgba(0,0,0,.2);
+}
+nav button{
+  flex:1;background:none;border:none;color:#9aa0ad;
+  padding:10px 4px 8px;font-size:.72rem;font-weight:600;
+  display:flex;flex-direction:column;align-items:center;gap:3px;
+}
+nav button .ico{font-size:1.25rem;line-height:1}
+nav button.active{color:var(--paper)}
+nav button.active .ico{color:var(--red)}
+
+/* ---------- Générique ---------- */
+main{padding:14px 14px 20px;max-width:760px;margin:0 auto}
+.toolbar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.chip{
+  border:1.5px solid var(--ink);background:var(--panel);color:var(--ink);
+  border-radius:999px;padding:6px 13px;font-size:.82rem;font-weight:600;
+}
+.chip.on{background:var(--ink);color:var(--paper)}
+input[type=search],input[type=text],input[type=number],input[type=date],select,textarea{
+  width:100%;padding:10px 12px;border:1.5px solid #d8d3c6;border-radius:var(--radius);
+  background:var(--panel);font-size:1rem;color:var(--ink);font-family:inherit;
+}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);outline-offset:1px}
+label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);display:block;margin:12px 0 4px}
+.btn{
+  background:var(--red);color:#fff;border:none;border-radius:var(--radius);
+  padding:12px 18px;font-size:1rem;font-weight:700;width:100%;
+}
+.btn.secondary{background:var(--panel);color:var(--ink);border:1.5px solid var(--ink)}
+.btn.small{width:auto;padding:8px 14px;font-size:.85rem}
+.btn:disabled{opacity:.45}
+.empty{
+  text-align:center;color:var(--muted);padding:44px 20px;line-height:1.55;
+  border:2px dashed #d8d3c6;border-radius:var(--radius);margin-top:8px;
+}
+.empty b{color:var(--ink)}
+
+/* ---------- Étagère : la signature ---------- */
+.serie-card{
+  background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:12px 12px 8px;margin-bottom:12px;
+}
+.serie-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.serie-head h3{font-size:1.12rem;text-transform:uppercase;flex:1}
+.badge{
+  font-size:.68rem;font-weight:800;letter-spacing:.05em;border-radius:4px;
+  padding:2px 7px;color:#fff;text-transform:uppercase;
+}
+.badge.BD{background:var(--blue)} .badge.Manga{background:var(--red)} .badge.Comics{background:var(--gold)}
+.serie-meta{font-size:.78rem;color:var(--muted);margin-top:2px}
+.shelf{
+  display:flex;align-items:flex-end;gap:3px;overflow-x:auto;
+  padding:14px 4px 0;min-height:96px;
+  -webkit-overflow-scrolling:touch;
+}
+.spine{
+  flex:0 0 auto;width:26px;height:84px;border-radius:3px 3px 0 0;
+  display:flex;align-items:flex-end;justify-content:center;
+  font-size:.72rem;font-weight:800;color:#fff;padding-bottom:6px;
+  position:relative;border:none;
+}
+.spine.owned{background:linear-gradient(180deg,var(--blue) 0%,var(--blue) 12%,var(--ink) 12%)}
+.spine.owned.lu{background:linear-gradient(180deg,var(--gold) 0%,var(--gold) 12%,var(--ink) 12%)}
+.spine.owned.prete{opacity:.55;transform:translateY(-8px)}
+.spine.missing{
+  background:transparent;border:2px dashed #c9c3b4;color:#b3ad9d;height:76px;
+}
+.shelf-board{height:6px;background:#d8d3c6;border-radius:2px;margin:0 4px}
+.legend{font-size:.72rem;color:var(--muted);margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+/* ---------- Détail série / albums ---------- */
+.album-row{
+  display:flex;gap:10px;background:var(--panel);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:10px;margin-bottom:10px;align-items:center;
+}
+.cover{
+  width:52px;height:74px;border-radius:4px;object-fit:cover;background:#e6e1d4;
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  font-weight:800;color:var(--muted);font-size:1.1rem;
+}
+.album-info{flex:1;min-width:0}
+.album-info b{display:block;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.album-info small{color:var(--muted);font-size:.76rem;display:block}
+.tags{margin-top:3px;display:flex;gap:5px;flex-wrap:wrap}
+.tag{font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:4px;background:var(--paper);border:1px solid #d8d3c6;color:var(--muted)}
+.tag.lu{background:var(--gold);border-color:var(--gold);color:#fff}
+.tag.prete{background:var(--red);border-color:var(--red);color:#fff}
+.tag.eo{background:var(--blue);border-color:var(--blue);color:#fff}
+.tag.wish{background:var(--ink);border-color:var(--ink);color:#fff}
+
+/* ---------- Modale ---------- */
+.overlay{
+  position:fixed;inset:0;background:rgba(34,36,43,.55);z-index:40;
+  display:none;align-items:flex-end;justify-content:center;
+}
+.overlay.open{display:flex}
+.sheet{
+  background:var(--paper);border-radius:16px 16px 0 0;width:100%;max-width:760px;
+  max-height:88vh;overflow-y:auto;padding:18px 16px calc(18px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling:touch;
+}
+.sheet h2{font-size:1.2rem;text-transform:uppercase;margin-bottom:4px}
+.sheet .close{float:right;background:none;border:none;font-size:1.5rem;color:var(--muted);padding:0 4px}
+.row2{display:flex;gap:10px}
+.row2>div{flex:1}
+
+/* ---------- Scanner ---------- */
+#scanBox{position:relative;border-radius:var(--radius);overflow:hidden;background:#000;margin-top:10px;display:none}
+#scanBox.on{display:block}
+#scanVideo{width:100%;max-height:44vh;display:block;object-fit:cover}
+#scanLine{position:absolute;left:8%;right:8%;top:50%;height:2px;background:var(--red);box-shadow:0 0 8px var(--red)}
+.lookup-result{background:var(--panel);border:1.5px solid var(--blue);border-radius:var(--radius);padding:12px;margin-top:12px;display:flex;gap:10px}
+
+/* ---------- Stats ---------- */
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{
+  background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:14px;text-align:center;
+}
+.stat .n{font-size:1.9rem;font-weight:800;font-family:'Avenir Next Condensed','Arial Narrow',sans-serif}
+.stat .l{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+.stat.wide{grid-column:1/-1}
+.bar{height:14px;border-radius:7px;overflow:hidden;display:flex;margin-top:8px;background:#e6e1d4}
+.bar i{height:100%}
+.toast{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom));
+  background:var(--ink);color:var(--paper);padding:10px 18px;border-radius:999px;
+  font-size:.88rem;font-weight:600;z-index:60;opacity:0;transition:opacity .25s;pointer-events:none;
+  max-width:90vw;text-align:center;
+}
+.toast.show{opacity:1}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Ma <span>BD</span>thèque</h1>
+  <button class="hbtn" onclick="exportJSON()">Exporter</button>
+  <button class="hbtn" onclick="document.getElementById('importFile').click()">Importer</button>
+  <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importJSON(event)">
+</header>
+
+<main id="main"></main>
+
+<nav>
+  <button id="nav-coll" class="active" onclick="go('coll')"><span class="ico">▮▮▮</span>Collection</button>
+  <button id="nav-add" onclick="openAdd()"><span class="ico">＋</span>Ajouter</button>
+  <button id="nav-wish" onclick="go('wish')"><span class="ico">★</span>Envies</button>
+  <button id="nav-stats" onclick="go('stats')"><span class="ico">◔</span>Stats</button>
+</nav>
+
+<!-- Modale ajout / scan -->
+<div class="overlay" id="ovAdd">
+  <div class="sheet">
+    <button class="close" onclick="closeSheet('ovAdd')">✕</button>
+    <h2>Ajouter un album</h2>
+    <div class="toolbar" style="margin-top:10px">
+      <button class="btn small" id="btnScan" onclick="toggleScan()">📷 Scanner le code-barres</button>
+    </div>
+    <div id="scanBox"><video id="scanVideo" playsinline muted></video><div id="scanLine"></div></div>
+    <label>ISBN (13 chiffres)</label>
+    <div class="row2">
+      <div><input type="text" id="isbnInput" inputmode="numeric" placeholder="9782205088167"></div>
+      <div style="flex:0 0 auto"><button class="btn small" style="height:100%" onclick="lookupISBN()">Rechercher</button></div>
+    </div>
+    <div id="lookupOut"></div>
+    <label>Série</label>
+    <input type="text" id="fSerie" list="serieList" placeholder="Nom de la série">
+    <datalist id="serieList"></datalist>
+    <div class="row2">
+      <div><label>Type</label>
+        <select id="fType"><option>BD</option><option>Manga</option><option>Comics</option></select></div>
+      <div><label>Tome n°</label><input type="number" id="fTome" inputmode="numeric" min="0"></div>
+    </div>
+    <label>Titre de l'album</label>
+    <input type="text" id="fTitre">
+    <div class="row2">
+      <div><label>Scénariste / auteur</label><input type="text" id="fAuteurs"></div>
+      <div><label>Éditeur</label><input type="text" id="fEditeur"></div>
+    </div>
+    <label>Couverture (URL, rempli automatiquement)</label>
+    <input type="text" id="fCover" placeholder="https://…">
+    <label>Notes personnelles</label>
+    <textarea id="fNotes" rows="2"></textarea>
+    <div class="toolbar" style="margin-top:12px">
+      <button type="button" class="chip" id="cOwn" onclick="this.classList.toggle('on')">Je le possède</button>
+      <button type="button" class="chip" id="cLu" onclick="this.classList.toggle('on')">Lu</button>
+      <button type="button" class="chip" id="cEO" onclick="this.classList.toggle('on')">Édition originale</button>
+      <button type="button" class="chip" id="cDed" onclick="this.classList.toggle('on')">Dédicacé</button>
+    </div>
+    <input type="hidden" id="fEditId">
+    <button class="btn" style="margin-top:14px" onclick="saveAlbum()">Enregistrer l'album</button>
+    <button class="btn secondary" id="btnDelete" style="margin-top:8px;display:none" onclick="deleteAlbum()">Supprimer cet album</button>
+  </div>
+</div>
+
+<!-- Modale détail série -->
+<div class="overlay" id="ovSerie">
+  <div class="sheet" id="serieSheet"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const APP_VERSION="V-B.1.2.1";
+const LS_KEY="mabdtheque_v1";
+/* REX cartes anglais : demander un stockage persistant pour éviter la purge Safari */
+if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+
+/* ================= Modèle =================
+   album = {id, serie, type, tome, titre, isbn, auteurs, editeur,
+            cover, notes, possede, lu, prete(""|nom), eo, dedicace, dateAjout}
+   series = { "Nom de série": {nbTomes:Number} }  — métadonnées par série */
+let db={albums:[],series:{}};
+try{const raw=localStorage.getItem(LS_KEY); if(raw) db=JSON.parse(raw);}catch(e){}
+if(!db.series) db.series={};
+function persist(){try{localStorage.setItem(LS_KEY,JSON.stringify(db));}catch(e){toast("⚠️ Sauvegarde locale impossible");}}
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+/* ================= Navigation ================= */
+let view="coll", filterType="", search="";
+function go(v){view=v;
+  ["coll","wish","stats"].forEach(x=>{const b=document.getElementById("nav-"+x);if(b)b.classList.toggle("active",x===v);});
+  document.getElementById("nav-add").classList.remove("active");
+  render();
+}
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),2600);}
+
+/* ================= Regroupement par série ================= */
+function seriesMap(){
+  const m=new Map();
+  for(const a of db.albums){
+    const key=(a.serie||"Sans série").trim();
+    if(!m.has(key)) m.set(key,{nom:key,type:a.type||"BD",albums:[]});
+    m.get(key).albums.push(a);
+  }
+  for(const s of m.values()) s.albums.sort((x,y)=>(x.tome||0)-(y.tome||0));
+  return [...m.values()].sort((a,b)=>a.nom.localeCompare(b.nom,"fr"));
+}
+
+/* ================= Vue Collection ================= */
+function render(){
+  const main=document.getElementById("main");
+  if(view==="coll") main.innerHTML=renderColl();
+  else if(view==="wish") main.innerHTML=renderWish();
+  else main.innerHTML=renderStats();
+}
+function renderColl(){
+  let h=`<div class="toolbar">
+    <input type="search" placeholder="Rechercher une série, un titre…" value="${esc(search)}"
+      oninput="search=this.value;render()" style="flex:1;min-width:150px">
+  </div>
+  <div class="toolbar">
+    ${["","BD","Manga","Comics"].map(t=>`<button class="chip ${filterType===t?"on":""}"
+      onclick="filterType='${t}';render()">${t||"Tout"}</button>`).join("")}
+  </div>`;
+  const owned=seriesMap().map(s=>({...s,albums:s.albums}))
+    .filter(s=>s.albums.some(a=>a.possede))
+    .filter(s=>!filterType||s.type===filterType)
+    .filter(s=>{if(!search)return true;const q=search.toLowerCase();
+      return s.nom.toLowerCase().includes(q)||s.albums.some(a=>(a.titre||"").toLowerCase().includes(q));});
+  if(!owned.length)
+    return h+`<div class="empty"><b>Ta bibliothèque est vide.</b><br>Touche <b>＋ Ajouter</b> et scanne le code-barres au dos d'un album pour commencer.</div>`;
+  for(const s of owned) h+=serieCard(s);
+  h+=`<div class="legend" style="margin:4px 6px 0">
+    <span><i style="background:var(--ink)"></i>Possédé</span>
+    <span><i style="background:var(--gold)"></i>Lu (liseré)</span>
+    <span><i style="border:2px dashed #c9c3b4;background:none"></i>Manquant</span>
+    <span>Décalé vers le haut = prêté</span></div>`;
+  return h;
+}
+function serieCard(s){
+  const poss=s.albums.filter(a=>a.possede);
+  const nbDecl=(db.series[s.nom]&&db.series[s.nom].nbTomes)||0;
+  const maxT=Math.max(...s.albums.map(a=>a.tome||0),nbDecl,0);
+  const byTome=new Map(); for(const a of s.albums) if(a.tome) byTome.set(a.tome,a);
+  let spines="";
+  if(maxT>0&&maxT<=200){
+    for(let t=1;t<=maxT;t++){
+      const a=byTome.get(t);
+      if(a&&a.possede)
+        spines+=`<button class="spine owned ${a.lu?"lu":""} ${a.prete?"prete":""}" onclick="event.stopPropagation();openEdit('${a.id}')" aria-label="Tome ${t}">${t}</button>`;
+      else
+        spines+=`<button class="spine missing" onclick="event.stopPropagation();quickWish('${esc(s.nom)}','${esc(s.type)}',${t})" aria-label="Tome ${t} manquant">${t}</button>`;
+    }
+  }else{
+    for(const a of poss) spines+=`<button class="spine owned ${a.lu?"lu":""} ${a.prete?"prete":""}" onclick="event.stopPropagation();openEdit('${a.id}')">${a.tome||"·"}</button>`;
+  }
+  const manq=maxT>0?Math.max(0,maxT-poss.filter(a=>a.tome).length):0;
+  return `<div class="serie-card" onclick="openSerie('${esc(s.nom)}')">
+    <div class="serie-head"><h3>${esc(s.nom)}</h3><span class="badge ${esc(s.type)}">${esc(s.type)}</span></div>
+    <div class="serie-meta">${poss.length} possédé${poss.length>1?"s":""}${manq?` · <b style="color:var(--red)">${manq} manquant${manq>1?"s":""}</b>`:""} · ${poss.filter(a=>a.lu).length} lu${poss.filter(a=>a.lu).length>1?"s":""}</div>
+    <div class="shelf">${spines}</div><div class="shelf-board"></div>
+  </div>`;
+}
+function quickWish(serie,type,tome){
+  db.albums.push({id:uid(),serie,type,tome,titre:`${serie} T${tome}`,possede:false,lu:false,prete:"",eo:false,dedicace:false,dateAjout:new Date().toISOString()});
+  persist();render();toast(`★ ${serie} T${tome} ajouté aux envies`);
+}
+
+/* ================= Détail série ================= */
+function openSerie(nom){
+  const s=seriesMap().find(x=>x.nom===nom); if(!s)return;
+  const poss=s.albums.filter(a=>a.possede);
+  const nbDecl=(db.series[nom]&&db.series[nom].nbTomes)||"";
+  let h=`<button class="close" onclick="closeSheet('ovSerie')">✕</button>
+    <h2>${esc(s.nom)}</h2>
+    <div class="serie-meta" style="margin-bottom:10px">${poss.length} albums possédés</div>
+    <div class="toolbar">
+      <span style="font-size:.82rem;font-weight:700">Tomes parus (série complète) :</span>
+      <input type="number" id="nbTomesInput" inputmode="numeric" style="width:76px" min="1" value="${nbDecl}">
+      <button class="btn small" onclick="saveNbTomes('${esc(nom)}')">OK</button>
+    </div>
+    <div class="toolbar">
+      <span style="font-size:.82rem;font-weight:700">Marquer lus jusqu'au tome :</span>
+      <input type="number" id="luJusqua" inputmode="numeric" style="width:76px" min="1">
+      <button class="btn small" onclick="markLuJusqua('${esc(nom)}')">OK</button>
+    </div>
+    <button class="btn secondary" style="margin-bottom:12px" onclick="searchSerieOnline('${esc(nom)}')">🔎 Chercher les tomes de la série en ligne</button>
+    <div id="serieSearchOut"></div>`;
+  for(const a of s.albums) h+=albumRow(a);
+  document.getElementById("serieSheet").innerHTML=h;
+  document.getElementById("ovSerie").classList.add("open");
+}
+function albumRow(a){
+  const cov=a.cover?`<img class="cover" src="${esc(a.cover)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=cover>T${a.tome||"?"}</div>'">`:`<div class="cover">T${a.tome||"?"}</div>`;
+  return `<div class="album-row" onclick="openEdit('${a.id}')">${cov}
+    <div class="album-info"><b>${a.tome?`T${a.tome} · `:""}${esc(a.titre||"(sans titre)")}</b>
+      <small>${esc(a.auteurs||"")} ${a.editeur?"· "+esc(a.editeur):""}</small>
+      <div class="tags">
+        ${a.possede?"":`<span class="tag wish">★ Envie</span>`}
+        ${a.lu?`<span class="tag lu">Lu</span>`:""}
+        ${a.prete?`<span class="tag prete">Prêté à ${esc(a.prete)}</span>`:""}
+        ${a.eo?`<span class="tag eo">EO</span>`:""}
+        ${a.dedicace?`<span class="tag">Dédicacé</span>`:""}
+      </div></div></div>`;
+}
+function saveNbTomes(nom){
+  const n=parseInt(document.getElementById("nbTomesInput").value,10)||0;
+  if(n>0) db.series[nom]={...(db.series[nom]||{}),nbTomes:n};
+  else delete db.series[nom];
+  persist();render();openSerie(nom);
+  toast(n>0?`Série déclarée en ${n} tomes — les manquants s'affichent en pointillés`:"Nombre de tomes effacé");
+}
+async function searchSerieOnline(nom){
+  const out=document.getElementById("serieSearchOut");
+  out.innerHTML=`<p style="color:var(--muted);margin-bottom:10px">Recherche en cours dans Google Books…</p>`;
+  const owned=new Set(db.albums.filter(a=>(a.serie||"").trim()===nom).map(a=>a.tome).filter(Boolean));
+  let vols=[];
+  try{
+    for(let start=0;start<80;start+=40){
+      const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent('"'+nom+'"')}&maxResults=40&startIndex=${start}&langRestrict=fr`);
+      const j=await r.json();
+      if(!j.items) break;
+      vols=vols.concat(j.items);
+      if(j.items.length<40) break;
+    }
+  }catch(e){out.innerHTML=`<p style="color:var(--red)">Recherche impossible — vérifie ta connexion.</p>`;return;}
+  /* extraire les tomes : "Titre - Tome 3", "Titre T3", "Titre, Vol. 3"… */
+  const found=new Map();
+  for(const it of vols){
+    const v=it.volumeInfo||{}; const t=v.title||"";
+    if(!t.toLowerCase().includes(nom.toLowerCase())) continue;
+    const m=(t+" "+(v.subtitle||"")).match(/(?:tome|t\.?|vol\.?|#)\s*(\d{1,3})/i);
+    if(!m) continue;
+    const num=parseInt(m[1],10);
+    if(num>0&&num<300&&!found.has(num))
+      found.set(num,{tome:num,titre:t,isbn:((v.industryIdentifiers||[]).find(x=>x.type==="ISBN_13")||{}).identifier||"",
+        cover:(v.imageLinks&&v.imageLinks.smallThumbnail||"").replace("http://","https://")});
+  }
+  const missing=[...found.values()].filter(x=>!owned.has(x.tome)).sort((a,b)=>a.tome-b.tome);
+  const maxFound=Math.max(...found.keys(),0);
+  if(!found.size){out.innerHTML=`<p style="color:var(--muted)">Aucun tome numéroté trouvé pour « ${esc(nom)} ». Google Books couvre mal certaines séries — renseigne le nombre de tomes à la main ci-dessus (info visible sur bedetheque.com).</p>`;return;}
+  let h=`<p style="font-size:.85rem;margin-bottom:8px"><b>${found.size} tomes repérés</b> (jusqu'au T${maxFound}) · <b style="color:var(--red)">${missing.length} que tu n'as pas</b> — liste indicative, Google Books peut être incomplet.</p>`;
+  if(missing.length){
+    h+=missing.map(x=>`<div class="album-row">
+      ${x.cover?`<img class="cover" src="${esc(x.cover)}" alt="">`:`<div class="cover">T${x.tome}</div>`}
+      <div class="album-info"><b>T${x.tome} · ${esc(x.titre)}</b><small>${x.isbn?"ISBN "+esc(x.isbn):""}</small></div>
+      <button class="btn small" onclick='addWishFromSearch(${JSON.stringify(nom)},${x.tome},${JSON.stringify(x.titre)},${JSON.stringify(x.isbn)},${JSON.stringify(x.cover)});this.textContent="✓";this.disabled=true'>＋ Envie</button>
+    </div>`).join("");
+    h+=`<button class="btn" style="margin-top:6px" onclick="addAllWish('${esc(nom)}')">Tout ajouter aux envies (${missing.length})</button>`;
+    window._lastMissing={nom,missing};
+  }
+  if(maxFound>((db.series[nom]||{}).nbTomes||0))
+    h+=`<button class="btn secondary" style="margin-top:8px" onclick="document.getElementById('nbTomesInput').value=${maxFound};saveNbTomes('${esc(nom)}')">Déclarer la série en ${maxFound} tomes</button>`;
+  out.innerHTML=h;
+}
+function addWishFromSearch(serie,tome,titre,isbn,cover){
+  const s=seriesMap().find(x=>x.nom===serie);
+  db.albums.push({id:uid(),serie,type:(s&&s.type)||"BD",tome,titre,isbn,cover,
+    possede:false,lu:false,prete:"",eo:false,dedicace:false,dateAjout:new Date().toISOString()});
+  persist();render();toast(`★ T${tome} ajouté aux envies`);
+}
+function addAllWish(nom){
+  if(!window._lastMissing||window._lastMissing.nom!==nom)return;
+  let c=0;
+  for(const x of window._lastMissing.missing){
+    if(db.albums.some(a=>(a.serie||"").trim()===nom&&a.tome===x.tome))continue;
+    addWishFromSearchSilent(nom,x);c++;
+  }
+  persist();render();openSerie(nom);toast(`★ ${c} tomes ajoutés aux envies`);
+}
+function addWishFromSearchSilent(serie,x){
+  const s=seriesMap().find(y=>y.nom===serie);
+  db.albums.push({id:uid(),serie,type:(s&&s.type)||"BD",tome:x.tome,titre:x.titre,isbn:x.isbn,cover:x.cover,
+    possede:false,lu:false,prete:"",eo:false,dedicace:false,dateAjout:new Date().toISOString()});
+}
+function markLuJusqua(nom){
+  const n=parseInt(document.getElementById("luJusqua").value,10);
+  if(!n){toast("Indique un numéro de tome");return;}
+  let c=0;
+  for(const a of db.albums) if((a.serie||"").trim()===nom&&a.possede&&a.tome&&a.tome<=n&&!a.lu){a.lu=true;c++;}
+  persist();openSerie(nom);render();toast(`${c} album${c>1?"s":""} marqué${c>1?"s":""} lu${c>1?"s":""}`);
+}
+
+/* ================= Envies ================= */
+function renderWish(){
+  const wish=db.albums.filter(a=>!a.possede).sort((a,b)=>(a.serie||"").localeCompare(b.serie||"","fr")||((a.tome||0)-(b.tome||0)));
+  let h=`<h2 class="display" style="text-transform:uppercase;margin-bottom:10px">Mes envies · liste d'achats</h2>`;
+  if(!wish.length) return h+`<div class="empty"><b>Aucune envie pour l'instant.</b><br>Touche un tome en pointillés sur une étagère pour l'ajouter ici.</div>`;
+  for(const a of wish) h+=albumRow(a);
+  return h;
+}
+
+/* ================= Stats ================= */
+const EPAISSEUR={BD:10,Manga:16,Comics:7}; /* mm par album, estimation */
+function renderStats(){
+  const poss=db.albums.filter(a=>a.possede);
+  const lus=poss.filter(a=>a.lu).length;
+  const byType={BD:0,Manga:0,Comics:0};
+  let mm=0;
+  for(const a of poss){byType[a.type||"BD"]=(byType[a.type||"BD"]||0)+1;mm+=EPAISSEUR[a.type]||10;}
+  const manq=db.albums.filter(a=>!a.possede).length;
+  const pretes=poss.filter(a=>a.prete);
+  const tot=poss.length||1;
+  let h=`<h2 class="display" style="text-transform:uppercase;margin-bottom:10px">Statistiques</h2>
+  <div class="stat-grid">
+    <div class="stat"><div class="n">${poss.length}</div><div class="l">Albums possédés</div></div>
+    <div class="stat"><div class="n">${(mm/1000).toFixed(2).replace(".",",")} m</div><div class="l">Hauteur d'étagère</div></div>
+    <div class="stat"><div class="n">${lus}</div><div class="l">Lus (${Math.round(lus/tot*100)} %)</div></div>
+    <div class="stat"><div class="n" style="color:var(--red)">${manq}</div><div class="l">Envies / manquants</div></div>
+    <div class="stat wide"><div class="l" style="margin-bottom:2px">Répartition</div>
+      <div class="bar">
+        <i style="width:${byType.BD/tot*100}%;background:var(--blue)"></i>
+        <i style="width:${byType.Manga/tot*100}%;background:var(--red)"></i>
+        <i style="width:${byType.Comics/tot*100}%;background:var(--gold)"></i>
+      </div>
+      <div class="legend" style="justify-content:center;margin-top:6px">
+        <span><i style="background:var(--blue)"></i>BD ${byType.BD}</span>
+        <span><i style="background:var(--red)"></i>Manga ${byType.Manga}</span>
+        <span><i style="background:var(--gold)"></i>Comics ${byType.Comics}</span>
+      </div></div>`;
+  if(pretes.length){
+    h+=`<div class="stat wide" style="text-align:left"><div class="l" style="margin-bottom:6px">Albums prêtés</div>`;
+    for(const a of pretes) h+=`<div style="font-size:.88rem;padding:3px 0">📕 <b>${esc(a.serie)} ${a.tome?"T"+a.tome:""}</b> → chez <b>${esc(a.prete)}</b></div>`;
+    h+=`</div>`;
+  }
+  h+=`</div><p style="text-align:center;color:var(--muted);font-size:.72rem;margin-top:16px">${APP_VERSION} · données stockées dans ce navigateur · pense à exporter régulièrement</p>`;
+  return h;
+}
+
+/* ================= Ajout / édition ================= */
+function openAdd(){
+  clearForm();
+  document.getElementById("ovAdd").classList.add("open");
+  refreshSerieList();
+}
+function openEdit(id){
+  const a=db.albums.find(x=>x.id===id); if(!a)return;
+  closeSheet("ovSerie"); clearForm(); refreshSerieList();
+  document.getElementById("fEditId").value=a.id;
+  document.getElementById("fSerie").value=a.serie||"";
+  document.getElementById("fType").value=a.type||"BD";
+  document.getElementById("fTome").value=a.tome||"";
+  document.getElementById("fTitre").value=a.titre||"";
+  document.getElementById("fAuteurs").value=a.auteurs||"";
+  document.getElementById("fEditeur").value=a.editeur||"";
+  document.getElementById("fCover").value=a.cover||"";
+  document.getElementById("fNotes").value=a.notes||"";
+  document.getElementById("isbnInput").value=a.isbn||"";
+  document.getElementById("cOwn").classList.toggle("on",!!a.possede);
+  document.getElementById("cLu").classList.toggle("on",!!a.lu);
+  document.getElementById("cEO").classList.toggle("on",!!a.eo);
+  document.getElementById("cDed").classList.toggle("on",!!a.dedicace);
+  document.getElementById("btnDelete").style.display="block";
+  /* champ prêt */
+  addPretField(a.prete||"");
+  document.getElementById("ovAdd").classList.add("open");
+}
+function addPretField(val){
+  let f=document.getElementById("fPrete");
+  if(!f){
+    const div=document.createElement("div");
+    div.innerHTML=`<label>Prêté à (laisser vide si non prêté)</label><input type="text" id="fPrete">`;
+    document.getElementById("fNotes").parentNode.insertBefore(div,document.getElementById("fNotes").nextSibling);
+    f=document.getElementById("fPrete");
+  }
+  f.value=val;
+}
+function clearForm(){
+  ["fSerie","fTome","fTitre","fAuteurs","fEditeur","fCover","fNotes","isbnInput","fEditId"].forEach(i=>document.getElementById(i).value="");
+  document.getElementById("fType").value="BD";
+  document.getElementById("cOwn").classList.add("on");
+  ["cLu","cEO","cDed"].forEach(i=>document.getElementById(i).classList.remove("on"));
+  document.getElementById("btnDelete").style.display="none";
+  document.getElementById("lookupOut").innerHTML="";
+  addPretField("");
+  stopScan();
+}
+function refreshSerieList(){
+  document.getElementById("serieList").innerHTML=[...new Set(db.albums.map(a=>a.serie).filter(Boolean))].map(s=>`<option value="${esc(s)}">`).join("");
+}
+function saveAlbum(){
+  const serie=document.getElementById("fSerie").value.trim();
+  const titre=document.getElementById("fTitre").value.trim();
+  if(!serie&&!titre){toast("Indique au moins une série ou un titre");return;}
+  const id=document.getElementById("fEditId").value;
+  const data={
+    serie:serie||titre, type:document.getElementById("fType").value,
+    tome:parseInt(document.getElementById("fTome").value,10)||0,
+    titre:titre||serie, isbn:document.getElementById("isbnInput").value.trim(),
+    auteurs:document.getElementById("fAuteurs").value.trim(),
+    editeur:document.getElementById("fEditeur").value.trim(),
+    cover:document.getElementById("fCover").value.trim(),
+    notes:document.getElementById("fNotes").value.trim(),
+    possede:document.getElementById("cOwn").classList.contains("on"),
+    lu:document.getElementById("cLu").classList.contains("on"),
+    eo:document.getElementById("cEO").classList.contains("on"),
+    dedicace:document.getElementById("cDed").classList.contains("on"),
+    prete:(document.getElementById("fPrete")||{value:""}).value.trim(),
+  };
+  if(id){Object.assign(db.albums.find(x=>x.id===id),data);toast("Album mis à jour");}
+  else{db.albums.push({id:uid(),dateAjout:new Date().toISOString(),...data});toast("Album ajouté 📚");}
+  persist();closeSheet("ovAdd");go("coll");
+}
+function deleteAlbum(){
+  const id=document.getElementById("fEditId").value; if(!id)return;
+  if(!confirm("Supprimer définitivement cet album ?"))return;
+  db.albums=db.albums.filter(a=>a.id!==id);
+  persist();closeSheet("ovAdd");render();toast("Album supprimé");
+}
+function closeSheet(id){document.getElementById(id).classList.remove("open");if(id==="ovAdd")stopScan();}
+
+/* ================= Recherche ISBN (Google Books puis OpenLibrary) ================= */
+async function lookupISBN(){
+  const isbn=document.getElementById("isbnInput").value.replace(/[^0-9X]/gi,"");
+  if(isbn.length<10){toast("ISBN incomplet");return;}
+  const out=document.getElementById("lookupOut");
+  out.innerHTML=`<p style="margin-top:10px;color:var(--muted)">Recherche en cours…</p>`;
+  let found=null;
+  try{
+    const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${isbn}`);
+    const j=await r.json();
+    if(j.totalItems>0){
+      const v=j.items[0].volumeInfo;
+      found={titre:v.title||"",auteurs:(v.authors||[]).join(", "),editeur:v.publisher||"",
+        cover:(v.imageLinks&&(v.imageLinks.thumbnail||v.imageLinks.smallThumbnail)||"").replace("http://","https://"),
+        resume:v.description||""};
+    }
+  }catch(e){}
+  if(!found){
+    try{
+      const r=await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+      const j=await r.json(); const v=j["ISBN:"+isbn];
+      if(v) found={titre:v.title||"",auteurs:(v.authors||[]).map(a=>a.name).join(", "),
+        editeur:(v.publishers||[]).map(p=>p.name).join(", "),
+        cover:(v.cover&&(v.cover.medium||v.cover.small))||`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`,resume:""};
+    }catch(e){}
+  }
+  if(!found){out.innerHTML=`<p style="margin-top:10px;color:var(--red);font-weight:600">Introuvable dans Google Books et OpenLibrary — saisis les infos à la main ci-dessous.</p>`;return;}
+  document.getElementById("fTitre").value=found.titre;
+  document.getElementById("fAuteurs").value=found.auteurs;
+  document.getElementById("fEditeur").value=found.editeur;
+  document.getElementById("fCover").value=found.cover;
+  /* devine série + tome depuis le titre : "Titre, Tome 3" / "Titre T3" / "Titre - 3" */
+  const m=found.titre.match(/^(.*?)[,–-]?\s*(?:tome|t\.?|vol\.?|#)\s*(\d+)/i);
+  if(m){document.getElementById("fSerie").value=m[1].trim();document.getElementById("fTome").value=m[2];}
+  out.innerHTML=`<div class="lookup-result">
+    ${found.cover?`<img class="cover" src="${esc(found.cover)}" alt="">`:""}
+    <div style="font-size:.88rem"><b>${esc(found.titre)}</b><br>
+    <span style="color:var(--muted)">${esc(found.auteurs)}${found.editeur?" · "+esc(found.editeur):""}</span><br>
+    <span style="color:var(--ok);font-weight:700">✓ Fiche pré-remplie — vérifie et complète</span></div></div>`;
+}
+
+/* ================= Scanner code-barres =================
+   Voie 1 : API native BarcodeDetector (Chrome/Android).
+   Voie 2 (REX Safari iOS) : bibliothèque ZXing chargée à la volée. */
+let scanStream=null,scanTimer=null,detector=null,zxingReader=null;
+function loadZXing(){
+  return new Promise((res,rej)=>{
+    if(window.ZXing)return res();
+    const s=document.createElement("script");
+    s.src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js";
+    s.onload=res; s.onerror=()=>rej(new Error("cdn"));
+    document.head.appendChild(s);
+  });
+}
+async function toggleScan(){
+  const box=document.getElementById("scanBox");
+  if(box.classList.contains("on")){stopScan();return;}
+  const video=document.getElementById("scanVideo");
+  const native=("BarcodeDetector" in window);
+  if(!native){
+    try{await loadZXing();}
+    catch(e){toast("Scanner indisponible (pas de réseau ?) — saisis l'ISBN au clavier");return;}
+  }
+  try{
+    scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+  }catch(e){toast("Accès caméra refusé — autorise-le dans Réglages > Safari");return;}
+  video.srcObject=scanStream; await video.play();
+  box.classList.add("on");
+  document.getElementById("btnScan").textContent="⏹ Arrêter le scan";
+  if(native){
+    try{detector=detector||new BarcodeDetector({formats:["ean_13","ean_8"]});}
+    catch(e){detector=new BarcodeDetector();}
+    scanTimer=setInterval(async()=>{
+      try{
+        const codes=await detector.detect(video);
+        if(codes.length)onScanValue(codes[0].rawValue);
+      }catch(e){}
+    },350);
+  }else{
+    zxingReader=new ZXing.BrowserMultiFormatReader();
+    zxingReader.decodeFromStream(scanStream,video,(result)=>{
+      if(result)onScanValue(result.getText());
+    }).catch(()=>{});
+  }
+}
+function onScanValue(raw){
+  const val=String(raw||"").replace(/[^0-9X]/gi,"");
+  if(val.length<10)return;
+  document.getElementById("isbnInput").value=val;
+  stopScan(); if(navigator.vibrate)navigator.vibrate(80);
+  toast("Code-barres lu ✓"); lookupISBN();
+}
+function stopScan(){
+  if(scanTimer){clearInterval(scanTimer);scanTimer=null;}
+  if(zxingReader){try{zxingReader.reset();}catch(e){}zxingReader=null;}
+  if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}
+  const v=document.getElementById("scanVideo"); if(v)v.srcObject=null;
+  document.getElementById("scanBox").classList.remove("on");
+  const b=document.getElementById("btnScan"); if(b)b.textContent="📷 Scanner le code-barres";
+}
+
+/* ================= Export / Import ================= */
+function exportJSON(){
+  const blob=new Blob([JSON.stringify({app:"MaBDtheque",version:APP_VERSION,exporte:new Date().toISOString(),albums:db.albums,series:db.series},null,1)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`mabdtheque_${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  toast("Export prêt — enregistre-le dans iCloud Drive via la feuille de partage");
+}
+function importJSON(ev){
+  const f=ev.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const j=JSON.parse(r.result);
+      const albums=Array.isArray(j)?j:(j.albums||[]);
+      if(!Array.isArray(albums)) throw 0;
+      if(!confirm(`Importer ${albums.length} albums ? Cela remplace la collection actuelle (${db.albums.length} albums).`))return;
+      db.albums=albums; db.series=(j.series&&typeof j.series==="object")?j.series:{};
+      persist(); render(); toast("Import réussi ✓");
+    }catch(e){toast("Fichier invalide");}
+  };
+  r.readAsText(f); ev.target.value="";
+}
+
+render();
+</script>
+</body>
+</html>
