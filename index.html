@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Ma BDthèque">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
-<title>Ma BDthèque — V-B.1.11.0</title>
+<title>Ma BDthèque — V-B.1.12.0</title>
 <style>
 :root{
   --ink:#22242b;        /* encre */
@@ -307,7 +307,7 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
 
 <script>
 "use strict";
-const APP_VERSION="V-B.1.11.0";
+const APP_VERSION="V-B.1.12.0";
 const LS_KEY="mabdtheque_v1";
 /* REX cartes anglais : demander un stockage persistant pour éviter la purge Safari */
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
@@ -744,11 +744,14 @@ function renderStats(){
   h+=`</div><p style="text-align:center;color:var(--muted);font-size:.72rem;margin-top:16px">${APP_VERSION} · données stockées dans ce navigateur · pense à exporter régulièrement</p>`;
   const pend=db.albums.filter(a=>a.pending&&a.isbn);
   const noCover=db.albums.filter(a=>a.possede&&a.isbn&&!a.cover);
+  const noCoverNew=noCover.filter(a=>!a.coverTried);
+  const noCoverTried=noCover.filter(a=>a.coverTried);
   if(noCover.length){
     h+=`<div class="stat wide" style="text-align:left;margin-top:10px">
       <div class="l" style="margin-bottom:6px">🖼️ ${noCover.length} album${noCover.length>1?"s":""} sans couverture</div>
-      <p style="font-size:.82rem;color:var(--muted);margin-bottom:8px">Relance une recherche d'image pour tous les albums qui ont un ISBN mais pas de couverture (utile après un import).</p>
-      <button class="btn secondary" onclick="bulkFetchCovers()">🖼️ Récupérer les couvertures (${noCover.length})</button>
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:8px">${noCoverTried.length?`${noCoverNew.length} jamais recherché${noCoverNew.length>1?"s":""} · ${noCoverTried.length} déjà tenté${noCoverTried.length>1?"s":""} sans succès (non réessayés automatiquement — les catalogues se complètent avec le temps).`:"Relance une recherche d'image pour tous les albums qui ont un ISBN mais pas de couverture (utile après un import)."}</p>
+      ${noCoverNew.length?`<button class="btn secondary" onclick="bulkFetchCovers(false)">🖼️ Récupérer les couvertures (${noCoverNew.length})</button>`:""}
+      ${noCoverTried.length?`<button class="btn secondary" style="margin-top:8px" onclick="bulkFetchCovers(true)">🔁 Réessayer les échecs précédents (${noCoverTried.length})</button>`:""}
       <div id="coverBulkOut" style="margin-top:8px;font-size:.82rem;color:var(--muted)"></div>
     </div>`;
   }
@@ -774,8 +777,8 @@ function checkBulkFlagOnLoad(){
     toast("⏸ Une recherche en lot a été interrompue (Safari passé en arrière-plan) — va dans Stats et relance le bouton pour continuer, rien n'a été perdu.");
   }catch(e){}
 }
-async function bulkFetchCovers(){
-  const list=db.albums.filter(a=>a.possede&&a.isbn&&!a.cover);
+async function bulkFetchCovers(includeTried){
+  const list=db.albums.filter(a=>a.possede&&a.isbn&&!a.cover&&(includeTried||!a.coverTried));
   const out=document.getElementById("coverBulkOut");
   bulkStop=false; bulkFlagSet("covers",list.length);
   out.innerHTML=`Recherche 1/${list.length}…<button class="chip" style="margin-left:8px" onclick="bulkStop=true">⏸ Interrompre</button>`;
@@ -790,7 +793,9 @@ async function bulkFetchCovers(){
       cover=await fetchCoverOnly(a.titre||a.serie,a.auteurs,isbn);
       if(!cover){const r=await tryFetchISBN(a.isbn); if(r&&r.cover) cover=r.cover;}
     }catch(e){}
-    if(cover){a.cover=cover; ok++; persist();} /* sauvegarde immédiate : rien n'est perdu si on ferme l'appli */
+    if(cover){a.cover=cover; ok++;}
+    else a.coverTried=true; /* évite de retraiter cet échec au prochain lancement (V-B.1.12.0) */
+    persist(); /* sauvegarde immédiate : rien n'est perdu si on ferme l'appli */
     await new Promise(r=>setTimeout(r,400)); /* ménage les API */
   }
   const interrompu=bulkStop&&i<list.length;
@@ -861,7 +866,7 @@ async function tryFetchISBN(isbnRaw){
   return null;
 }
 
-/* ================= BnF : appel + nettoyage de la notice (V-B.1.11.0) =================
+/* ================= BnF : appel + nettoyage de la notice (V-B.1.12.0) =================
    Le champ dc:title de la BnF contient souvent la notice complète
    ("Titre. [Tome un] / scénario, X ; dessin, Y ; ..."). On la découpe :
    titre propre / mentions de responsabilité (scénariste, dessinateur),
@@ -921,7 +926,7 @@ async function fetchBnf(isbn){
   const creators=[...rec.getElementsByTagNameNS("*","creator")].map(e=>cleanBnfName(e.textContent)).filter(Boolean);
   const auteurs=auteursTitre||creators.join(", ");
   const editeur=get("publisher").replace(/\s*\([^)]+\)\s*$/,"").trim(); /* retire "(Paris)" */
-  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.11.0 : couverture de secours */
+  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.12.0 : couverture de secours */
   return {titre,tome,auteurs,editeur,cover,resume:"",source:"bnf"};
 }
 
@@ -969,7 +974,7 @@ function addPretField(val){
   }
   f.value=val;
 }
-/* ================= Balayage façon iOS Mail (V-B.1.11.0) =================
+/* ================= Balayage façon iOS Mail (V-B.1.12.0) =================
    Glissement léger -> le menu d'action reste affiché (comme Mail) ;
    glissement franc -> l'action se déclenche directement.
    Droite = action principale (lu/non-lu, tout lu) ; Gauche = suppression. */
@@ -1133,7 +1138,7 @@ function deleteAlbum(){
 }
 function closeSheet(id){document.getElementById(id).classList.remove("open");if(id==="ovAdd")stopScan();}
 
-/* ================= Couverture depuis les photos (V-B.1.11.0) =================
+/* ================= Couverture depuis les photos (V-B.1.12.0) =================
    Compression côté client pour rester léger dans le stockage du navigateur
    (localStorage ~5-10 Mo au total selon les appareils). */
 function handleCoverFile(ev){
@@ -1165,7 +1170,7 @@ function showCoverPreview(url){
   p.innerHTML=url?`<img src="${esc(url)}" style="width:70px;height:96px;object-fit:cover;border-radius:4px;margin-top:8px" alt="">`:"";
 }
 
-/* ================= Recherche par titre (V-B.1.11.0) ================= */
+/* ================= Recherche par titre (V-B.1.12.0) ================= */
 let _titleResults=[];
 async function searchByTitle(){
   const q=document.getElementById("titleSearch").value.trim();
@@ -1217,7 +1222,7 @@ async function lookupISBN(){
   out.innerHTML=`<p style="margin-top:10px;color:var(--muted)">Recherche en cours…</p>`;
   let found=null;
   /* cascade : l'API Google Books rate souvent des ISBN (surtout 979-) via "isbn:" ;
-     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.11.0) */
+     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.12.0) */
   const gbQueries=[`isbn:${isbn}`,`"${isbn}"`,isbn];
   let lastErr="";
   for(const q of gbQueries){
@@ -1246,7 +1251,7 @@ async function lookupISBN(){
     }catch(e){if(!lastErr)lastErr="réseau : "+e.message;}
   }
   /* 3e recours : BnF (catalogue général, SRU/Dublin Core) — très complet sur l'édition
-     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.11.0) */
+     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.12.0) */
   if(!found){
     try{ found=await fetchBnf(isbn); }
     catch(e){if(!lastErr)lastErr="BnF : "+e.message;}
