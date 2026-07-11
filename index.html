@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Ma BDthèque">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
-<title>Ma BDthèque — V-B.1.9.0</title>
+<title>Ma BDthèque — V-B.1.10.2</title>
 <style>
 :root{
   --ink:#22242b;        /* encre */
@@ -307,7 +307,7 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
 
 <script>
 "use strict";
-const APP_VERSION="V-B.1.9.0";
+const APP_VERSION="V-B.1.10.2";
 const LS_KEY="mabdtheque_v1";
 /* REX cartes anglais : demander un stockage persistant pour éviter la purge Safari */
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
@@ -328,7 +328,8 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 /* ================= Navigation ================= */
-let view="coll", filterType="", filterSupport="", search="", sortMode="alpha", displayMode="liste";
+let view="coll", filterType="", filterSupport="", filterRead="", search="", sortMode="alpha", displayMode="liste";
+let serieBulkMode=false, serieBulkSel=new Set(), wishViewMode="envies";
 function go(v){view=v;
   ["coll","wish","stats"].forEach(x=>{const b=document.getElementById("nav-"+x);if(b)b.classList.toggle("active",x===v);});
   document.getElementById("nav-add").classList.remove("active");
@@ -369,6 +370,10 @@ function renderColl(){
       onclick="filterSupport='${v}';render()">${l}</button>`).join("")}
   </div>
   <div class="toolbar">
+    ${[["","Tout statut"],["lu","✓ Lu"],["nonlu","○ Non lu"]].map(([v,l])=>`<button class="chip ${filterRead===v?"on":""}"
+      onclick="filterRead='${v}';render()">${l}</button>`).join("")}
+  </div>
+  <div class="toolbar">
     <select id="sortSelect" style="flex:1" onchange="sortMode=this.value;render()">
       <option value="alpha" ${sortMode==="alpha"?"selected":""}>Trier : Alphabétique</option>
       <option value="nb" ${sortMode==="nb"?"selected":""}>Trier : Nombre d'albums</option>
@@ -377,6 +382,9 @@ function renderColl(){
     </select>
     <button class="chip ${displayMode==='liste'?'on':''}" onclick="displayMode='liste';render()">☰ Liste</button>
     <button class="chip ${displayMode==='mosaique'?'on':''}" onclick="displayMode='mosaique';render()">▦ Mosaïque</button>
+  </div>
+  <div class="toolbar">
+    <button class="chip ${serieBulkMode?"on":""}" onclick="toggleSerieBulkMode()">${serieBulkMode?"✕ Annuler la sélection":"☑️ Sélectionner des séries"}</button>
   </div>
   <div id="collResults">${collResultsHTML()}</div>`;
   return h;
@@ -388,6 +396,7 @@ function updateCollResults(){
 function collResultsHTML(){
   let owned=seriesMap().map(s=>({...s,albums:s.albums}))
     .filter(s=>s.albums.some(a=>a.possede&&(!filterSupport||(a.support||[]).includes(filterSupport))))
+    .filter(s=>s.albums.some(a=>a.possede&&(!filterRead||(filterRead==="lu"?a.lu:!a.lu))))
     .filter(s=>!filterType||s.type===filterType)
     .filter(s=>{if(!search)return true;const q=search.toLowerCase();
       return s.nom.toLowerCase().includes(q)||s.albums.some(a=>(a.titre||"").toLowerCase().includes(q));});
@@ -399,13 +408,38 @@ function collResultsHTML(){
     h+=`<div class="mosaic-grid">`+owned.map(s=>serieTile(s)).join("")+`</div>`;
   }else{
     for(const s of owned) h+=serieCard(s);
-    h+=`<div class="legend" style="margin:4px 6px 0">
+    if(!serieBulkMode) h+=`<div class="legend" style="margin:4px 6px 0">
       <span><i style="background:var(--ink)"></i>Possédé</span>
       <span><i style="background:var(--gold)"></i>Lu (liseré)</span>
       <span><i style="border:2px dashed #c9c3b4;background:none"></i>Manquant</span>
       <span>Décalé vers le haut = prêté</span></div>`;
   }
+  if(serieBulkMode&&serieBulkSel.size)
+    h+=`<div class="toolbar" style="position:sticky;bottom:76px;background:var(--paper);padding:10px;margin-top:6px;border-top:2px solid #d8d3c6;border-radius:var(--radius)">
+      <span style="font-size:.8rem;font-weight:700;width:100%">${serieBulkSel.size} série${serieBulkSel.size>1?"s":""} sélectionnée${serieBulkSel.size>1?"s":""}</span>
+      <button class="chip" onclick="serieBulkApply('lu',true)">Tout lu</button>
+      <button class="chip" onclick="serieBulkApply('lu',false)">Tout non lu</button>
+      <button class="chip" onclick="serieBulkApply('support','physique')">📕 Physique</button>
+      <button class="chip" onclick="serieBulkApply('support','scan')">💻 Scan</button>
+    </div>`;
   return h;
+}
+function toggleSerieBulkMode(){
+  serieBulkMode=!serieBulkMode; serieBulkSel.clear(); render();
+}
+function toggleSerieBulkSel(nom){
+  if(serieBulkSel.has(nom)) serieBulkSel.delete(nom); else serieBulkSel.add(nom);
+  updateCollResults();
+}
+function serieBulkApply(field,value){
+  let n=0;
+  for(const nom of serieBulkSel)
+    for(const a of db.albums) if((a.serie||"").trim()===nom&&a.possede){
+      if(field==="lu") a.lu=value;
+      if(field==="support") a.support=[value];
+      n++;
+    }
+  persist(); render(); toast(`${n} album${n>1?"s":""} mis à jour dans ${serieBulkSel.size} série${serieBulkSel.size>1?"s":""}`);
 }
 function sortSeries(list){
   const poss=s=>s.albums.filter(a=>a.possede);
@@ -426,43 +460,37 @@ function serieThumb(s){
   return `<div class="serie-thumb ph">${esc(s.nom.slice(0,2).toUpperCase())}</div>`;
 }
 function serieCard(s){
-  const poss=s.albums.filter(a=>a.possede&&(!filterSupport||(a.support||[]).includes(filterSupport)));
+  const poss=s.albums.filter(a=>a.possede&&(!filterSupport||(a.support||[]).includes(filterSupport))&&(!filterRead||(filterRead==="lu"?a.lu:!a.lu)));
   const nbDecl=(db.series[s.nom]&&db.series[s.nom].nbTomes)||0;
   const maxT=Math.max(...s.albums.map(a=>a.tome||0),nbDecl,0);
   const byTome=new Map(); for(const a of s.albums) if(a.tome) byTome.set(a.tome,a);
   const total=maxT>0?maxT:poss.length;
   const compte=`${poss.length}/${total}`;
-  const SPINE_LIMIT=12; /* au-delà, l'étagère devient un mur peu lisible (REX) */
-  let shelfHTML;
-  if(maxT>0&&maxT<=SPINE_LIMIT){
-    let spines="";
-    for(let t=1;t<=maxT;t++){
-      const a=byTome.get(t);
-      if(a&&a.possede)
-        spines+=`<button class="spine owned ${a.lu?"lu":""} ${a.prete?"prete":""}" onclick="event.stopPropagation();openEdit('${a.id}')" aria-label="Tome ${t}">${t}</button>`;
-      else
-        spines+=`<button class="spine missing" onclick="event.stopPropagation();quickWish('${esc(s.nom)}','${esc(s.type)}',${t})" aria-label="Tome ${t} manquant">${t}</button>`;
-    }
-    shelfHTML=`<div class="shelf">${spines}</div><div class="shelf-board"></div>`;
-  }else if(maxT>SPINE_LIMIT){
+  /* toujours la barre de progression façon "3x3 Eyes" — le mur de dos de
+     livres n'est pas assez lisible, quelle que soit la taille de la série (REX) */
+  const pct=total?Math.round(poss.length/total*100):0;
+  let shelfHTML=`<div class="bar" style="margin-top:8px"><i style="width:${pct}%;background:var(--gold)"></i></div>`;
+  if(maxT>0){
     const missing=[]; for(let t=1;t<=maxT;t++){const a=byTome.get(t); if(!(a&&a.possede)) missing.push(t);}
-    const pct=Math.round(poss.length/total*100);
-    shelfHTML=`<div class="bar" style="margin-top:8px"><i style="width:${pct}%;background:var(--gold)"></i></div>`;
     if(missing.length)
       shelfHTML+=`<div class="toolbar" style="margin-top:8px">${missing.slice(0,60).map(t=>
         `<button class="chip" style="padding:4px 10px;font-size:.75rem" onclick="event.stopPropagation();quickWish('${esc(s.nom)}','${esc(s.type)}',${t})">T${t}</button>`).join("")}
         ${missing.length>60?`<span style="font-size:.75rem;color:var(--muted);align-self:center">+${missing.length-60} autres</span>`:""}</div>`;
     else shelfHTML+=`<p style="font-size:.8rem;color:var(--ok);font-weight:700;margin-top:6px">✓ Série complète</p>`;
-  }else{
-    let spines=""; for(const a of poss) spines+=`<button class="spine owned ${a.lu?"lu":""} ${a.prete?"prete":""}" onclick="event.stopPropagation();openEdit('${a.id}')">${a.tome||"·"}</button>`;
-    shelfHTML=`<div class="shelf">${spines}</div><div class="shelf-board"></div>`;
+  }
+  const body=`<div class="serie-head">${serieThumb(s)}<h3>${esc(s.nom)}</h3><span class="badge ${esc(s.type)}">${esc(s.type)}</span></div>
+    <div class="serie-meta"><b>${compte}</b> possédés · ${poss.filter(a=>a.lu).length} lu${poss.filter(a=>a.lu).length>1?"s":""}${poss.some(a=>(a.support||[]).includes("scan"))?" · 💻 scan présent":""}</div>
+    ${shelfHTML}`;
+  if(serieBulkMode){
+    const sel=serieBulkSel.has(s.nom);
+    return `<div class="serie-card ${sel?"sel":""}" onclick="toggleSerieBulkSel('${esc(s.nom)}')" style="display:flex;gap:10px;align-items:flex-start">
+      <div class="checkbox" style="margin-top:2px">${sel?"✓":""}</div><div style="flex:1">${body}</div></div>`;
   }
   return `<div class="swipe-wrap">
     <div class="swipe-action swipe-right" onclick="event.stopPropagation();triggerToggle('serie','${esc(s.nom)}')">✓ Tout lu</div>
+    <div class="swipe-action swipe-left" onclick="event.stopPropagation();triggerDeleteSerie('${esc(s.nom)}')">🗑<br>Suppr. la série</div>
     <div class="serie-card" data-swipe-id="${esc(s.nom)}" data-swipe-ctx="serie" onclick="serieTap(this,'${esc(s.nom)}')">
-    <div class="serie-head">${serieThumb(s)}<h3>${esc(s.nom)}</h3><span class="badge ${esc(s.type)}">${esc(s.type)}</span></div>
-    <div class="serie-meta"><b>${compte}</b> possédés · ${poss.filter(a=>a.lu).length} lu${poss.filter(a=>a.lu).length>1?"s":""}${poss.some(a=>(a.support||[]).includes("scan"))?" · 💻 scan présent":""}</div>
-    ${shelfHTML}
+    ${body}
     </div>
   </div>`;
 }
@@ -657,10 +685,20 @@ function markLuJusqua(nom){
 
 /* ================= Envies ================= */
 function renderWish(){
-  const wish=db.albums.filter(a=>!a.possede).sort((a,b)=>(a.serie||"").localeCompare(b.serie||"","fr")||((a.tome||0)-(b.tome||0)));
-  let h=`<h2 class="display" style="text-transform:uppercase;margin-bottom:10px">Mes envies · liste d'achats</h2>`;
-  if(!wish.length) return h+`<div class="empty"><b>Aucune envie pour l'instant.</b><br>Touche un tome en pointillés sur une étagère pour l'ajouter ici.</div>`;
-  for(const a of wish) h+=albumRow(a,"wish");
+  const isPal=wishViewMode==="pal";
+  const list=isPal
+    ? db.albums.filter(a=>a.possede&&!a.lu).sort((a,b)=>(a.serie||"").localeCompare(b.serie||"","fr")||((a.tome||0)-(b.tome||0)))
+    : db.albums.filter(a=>!a.possede).sort((a,b)=>(a.serie||"").localeCompare(b.serie||"","fr")||((a.tome||0)-(b.tome||0)));
+  const nWish=db.albums.filter(a=>!a.possede).length, nPal=db.albums.filter(a=>a.possede&&!a.lu).length;
+  let h=`<div class="toolbar" style="margin-bottom:4px">
+    <button class="chip ${!isPal?"on":""}" onclick="wishViewMode='envies';render()">★ Envies (${nWish})</button>
+    <button class="chip ${isPal?"on":""}" onclick="wishViewMode='pal';render()">📚 PAL — à lire (${nPal})</button>
+  </div>
+  <h2 class="display" style="text-transform:uppercase;margin:6px 0 10px">${isPal?"Pile à lire":"Mes envies · liste d'achats"}</h2>`;
+  if(!list.length) return h+(isPal
+    ? `<div class="empty"><b>Rien à lire pour l'instant.</b><br>Tous tes albums possédés sont marqués lus, ou balaie un album vers la droite pour le repasser en non-lu.</div>`
+    : `<div class="empty"><b>Aucune envie pour l'instant.</b><br>Touche un tome en pointillés sur une étagère pour l'ajouter ici.</div>`);
+  for(const a of list) h+=albumRow(a,isPal?"owned":"wish");
   return h;
 }
 
@@ -718,45 +756,68 @@ function renderStats(){
   }
   return h;
 }
+let bulkStop=false;
+const BULK_FLAG="mabdtheque_bulk_flag";
+function bulkFlagSet(kind,total){try{localStorage.setItem(BULK_FLAG,JSON.stringify({kind,total,at:Date.now()}));}catch(e){}}
+function bulkFlagClear(){try{localStorage.removeItem(BULK_FLAG);}catch(e){}}
+function checkBulkFlagOnLoad(){
+  try{
+    const raw=localStorage.getItem(BULK_FLAG); if(!raw)return;
+    const f=JSON.parse(raw);
+    bulkFlagClear();
+    toast("⏸ Une recherche en lot a été interrompue (Safari passé en arrière-plan) — va dans Stats et relance le bouton pour continuer, rien n'a été perdu.");
+  }catch(e){}
+}
 async function bulkFetchCovers(){
   const list=db.albums.filter(a=>a.possede&&a.isbn&&!a.cover);
   const out=document.getElementById("coverBulkOut");
-  let ok=0;
-  for(let i=0;i<list.length;i++){
+  bulkStop=false; bulkFlagSet("covers",list.length);
+  out.innerHTML=`Recherche 1/${list.length}…<button class="chip" style="margin-left:8px" onclick="bulkStop=true">⏸ Interrompre</button>`;
+  let ok=0,i=0;
+  for(;i<list.length;i++){
+    if(bulkStop) break;
     const a=list[i];
-    out.textContent=`Recherche ${i+1}/${list.length} : ${a.titre||a.isbn}…`;
+    out.innerHTML=`Recherche ${i+1}/${list.length} : ${esc(a.titre||a.isbn)}…<button class="chip" style="margin-left:8px" onclick="bulkStop=true">⏸ Interrompre</button>`;
     let cover="";
     try{
       const isbn=a.isbn.replace(/[^0-9X]/gi,"");
       cover=await fetchCoverOnly(a.titre||a.serie,a.auteurs,isbn);
       if(!cover){const r=await tryFetchISBN(a.isbn); if(r&&r.cover) cover=r.cover;}
     }catch(e){}
-    if(cover){a.cover=cover; ok++;}
+    if(cover){a.cover=cover; ok++; persist();} /* sauvegarde immédiate : rien n'est perdu si on ferme l'appli */
     await new Promise(r=>setTimeout(r,400)); /* ménage les API */
   }
-  persist();
-  out.textContent=`Terminé : ${ok}/${list.length} couvertures trouvées.`;
+  const interrompu=bulkStop&&i<list.length;
+  bulkFlagClear();
+  out.textContent=interrompu
+    ? `Interrompu à ${i}/${list.length} — ${ok} trouvée${ok>1?"s":""}. Relance le bouton pour continuer là où tu t'es arrêté.`
+    : `Terminé : ${ok}/${list.length} couvertures trouvées.`;
   render();toast(ok?`✓ ${ok} couverture${ok>1?"s":""} récupérée${ok>1?"s":""}`:"Aucune couverture trouvée cette fois");
 }
 async function bulkUpdatePending(){
   const pend=db.albums.filter(a=>a.pending&&a.isbn);
   const out=document.getElementById("bulkOut");
-  let ok=0;
-  for(let i=0;i<pend.length;i++){
+  bulkStop=false; bulkFlagSet("pending",pend.length);
+  let ok=0,i=0;
+  for(;i<pend.length;i++){
+    if(bulkStop) break;
     const a=pend[i];
-    out.textContent=`Vérification ${i+1}/${pend.length} : ${a.titre||a.isbn}…`;
+    out.innerHTML=`Vérification ${i+1}/${pend.length} : ${esc(a.titre||a.isbn)}…<button class="chip" style="margin-left:8px" onclick="bulkStop=true">⏸ Interrompre</button>`;
     const found=await tryFetchISBN(a.isbn);
     if(found){
       if(!a.cover&&found.cover) a.cover=found.cover;
       if(!a.auteurs&&found.auteurs) a.auteurs=found.auteurs;
       if(!a.editeur&&found.editeur) a.editeur=found.editeur;
       if((!a.titre||a.titre===a.isbn)&&found.titre) a.titre=found.titre;
-      a.pending=false; ok++;
+      a.pending=false; ok++; persist(); /* sauvegarde immédiate à chaque succès */
     }
     await new Promise(r=>setTimeout(r,400)); /* ménage l'API, évite le débit limité */
   }
-  persist();
-  out.textContent=`Terminé : ${ok}/${pend.length} albums complétés.`;
+  const interrompu=bulkStop&&i<pend.length;
+  bulkFlagClear();
+  out.textContent=interrompu
+    ? `Interrompu à ${i}/${pend.length} — ${ok} complété${ok>1?"s":""}. Relance le bouton pour continuer.`
+    : `Terminé : ${ok}/${pend.length} albums complétés.`;
   render();toast(ok?`✓ ${ok} album${ok>1?"s":""} mis à jour`:"Aucune nouveauté pour l'instant");
 }
 /* factorisation : la même cascade que lookupISBN, mais sans toucher au formulaire */
@@ -790,7 +851,7 @@ async function tryFetchISBN(isbnRaw){
   return null;
 }
 
-/* ================= BnF : appel + nettoyage de la notice (V-B.1.9.0) =================
+/* ================= BnF : appel + nettoyage de la notice (V-B.1.10.2) =================
    Le champ dc:title de la BnF contient souvent la notice complète
    ("Titre. [Tome un] / scénario, X ; dessin, Y ; ..."). On la découpe :
    titre propre / mentions de responsabilité (scénariste, dessinateur),
@@ -850,7 +911,7 @@ async function fetchBnf(isbn){
   const creators=[...rec.getElementsByTagNameNS("*","creator")].map(e=>cleanBnfName(e.textContent)).filter(Boolean);
   const auteurs=auteursTitre||creators.join(", ");
   const editeur=get("publisher").replace(/\s*\([^)]+\)\s*$/,"").trim(); /* retire "(Paris)" */
-  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.9.0 : couverture de secours */
+  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.10.2 : couverture de secours */
   return {titre,tome,auteurs,editeur,cover,resume:"",source:"bnf"};
 }
 
@@ -898,7 +959,7 @@ function addPretField(val){
   }
   f.value=val;
 }
-/* ================= Balayage façon iOS Mail (V-B.1.9.0) =================
+/* ================= Balayage façon iOS Mail (V-B.1.10.2) =================
    Glissement léger -> le menu d'action reste affiché (comme Mail) ;
    glissement franc -> l'action se déclenche directement.
    Droite = action principale (lu/non-lu, tout lu) ; Gauche = suppression. */
@@ -972,6 +1033,12 @@ function triggerToggle(ctx,id){
     for(const a of db.albums) if((a.serie||"").trim()===id&&a.possede&&!a.lu){a.lu=true;c++;}
     persist(); render(); toast(c?`${c} album${c>1?"s":""} marqué${c>1?"s":""} lu${c>1?"s":""}`:"Déjà tous lus");
   }
+}
+function triggerDeleteSerie(nom){
+  const n=db.albums.filter(a=>(a.serie||"").trim()===nom).length;
+  if(!confirm(`Supprimer définitivement toute la série « ${nom} » et ses ${n} album${n>1?"s":""} ?`))return;
+  db.albums=db.albums.filter(a=>(a.serie||"").trim()!==nom);
+  persist(); render(); toast(`Série « ${nom} » supprimée (${n} album${n>1?"s":""})`);
 }
 function triggerDelete(ctx,id){
   if(ctx==="wish"){
@@ -1056,7 +1123,7 @@ function deleteAlbum(){
 }
 function closeSheet(id){document.getElementById(id).classList.remove("open");if(id==="ovAdd")stopScan();}
 
-/* ================= Couverture depuis les photos (V-B.1.9.0) =================
+/* ================= Couverture depuis les photos (V-B.1.10.2) =================
    Compression côté client pour rester léger dans le stockage du navigateur
    (localStorage ~5-10 Mo au total selon les appareils). */
 function handleCoverFile(ev){
@@ -1088,7 +1155,7 @@ function showCoverPreview(url){
   p.innerHTML=url?`<img src="${esc(url)}" style="width:70px;height:96px;object-fit:cover;border-radius:4px;margin-top:8px" alt="">`:"";
 }
 
-/* ================= Recherche par titre (V-B.1.9.0) ================= */
+/* ================= Recherche par titre (V-B.1.10.2) ================= */
 let _titleResults=[];
 async function searchByTitle(){
   const q=document.getElementById("titleSearch").value.trim();
@@ -1140,7 +1207,7 @@ async function lookupISBN(){
   out.innerHTML=`<p style="margin-top:10px;color:var(--muted)">Recherche en cours…</p>`;
   let found=null;
   /* cascade : l'API Google Books rate souvent des ISBN (surtout 979-) via "isbn:" ;
-     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.9.0) */
+     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.10.2) */
   const gbQueries=[`isbn:${isbn}`,`"${isbn}"`,isbn];
   let lastErr="";
   for(const q of gbQueries){
@@ -1169,7 +1236,7 @@ async function lookupISBN(){
     }catch(e){if(!lastErr)lastErr="réseau : "+e.message;}
   }
   /* 3e recours : BnF (catalogue général, SRU/Dublin Core) — très complet sur l'édition
-     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.9.0) */
+     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.10.2) */
   if(!found){
     try{ found=await fetchBnf(isbn); }
     catch(e){if(!lastErr)lastErr="BnF : "+e.message;}
@@ -1288,6 +1355,7 @@ function importJSON(ev){
 }
 
 document.getElementById("verTag").textContent=APP_VERSION;
+checkBulkFlagOnLoad();
 render();
 </script>
 </body>
