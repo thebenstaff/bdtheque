@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Ma BDthèque">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
-<title>Ma BDthèque — V-B.1.3.1</title>
+<title>Ma BDthèque — V-B.1.6.1</title>
 <style>
 :root{
   --ink:#22242b;        /* encre */
@@ -93,7 +93,9 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
   background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);
   padding:12px 12px 8px;margin-bottom:12px;
 }
-.serie-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.serie-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.serie-thumb{width:34px;height:46px;border-radius:4px;object-fit:cover;flex:0 0 auto;background:#e6e1d4}
+.serie-thumb.ph{display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.85rem;color:var(--muted)}
 .serie-head h3{font-size:1.12rem;text-transform:uppercase;flex:1}
 .badge{
   font-size:.68rem;font-weight:800;letter-spacing:.05em;border-radius:4px;
@@ -121,6 +123,15 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
 .shelf-board{height:6px;background:#d8d3c6;border-radius:2px;margin:0 4px}
 .legend{font-size:.72rem;color:var(--muted);margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+.mosaic-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tile{background:var(--panel);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;text-align:center}
+.tile .serie-thumb{width:100%;height:118px;border-radius:0}
+.tile .serie-thumb.ph{font-size:1.4rem}
+.tile-info{padding:6px 6px 8px}
+.tile-info b{display:block;font-size:.74rem;line-height:1.15;max-height:2.3em;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
+.tile-info span{font-size:.68rem;color:var(--muted);display:block;margin-top:3px}
+@media (min-width:520px){.mosaic-grid{grid-template-columns:repeat(4,1fr)}}
 
 /* ---------- Détail série / albums ---------- */
 .album-row{
@@ -226,8 +237,9 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
     </div>
     <div id="lookupOut"></div>
     <label>Série</label>
-    <input type="text" id="fSerie" list="serieList" placeholder="Nom de la série">
+    <input type="text" id="fSerie" list="serieList" placeholder="Nom de la série" oninput="checkSerieMatch()">
     <datalist id="serieList"></datalist>
+    <div id="serieWarn"></div>
     <div class="row2">
       <div><label>Type</label>
         <select id="fType"><option>BD</option><option>Manga</option><option>Comics</option></select></div>
@@ -239,8 +251,17 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
       <div><label>Scénariste / auteur</label><input type="text" id="fAuteurs"></div>
       <div><label>Éditeur</label><input type="text" id="fEditeur"></div>
     </div>
-    <label>Couverture (URL, rempli automatiquement)</label>
-    <input type="text" id="fCover" placeholder="https://…">
+    <label>Couverture</label>
+    <div class="row2">
+      <div><input type="text" id="fCover" placeholder="https://…" oninput="showCoverPreview(this.value)"></div>
+      <div style="flex:0 0 auto"><button type="button" class="btn small" style="height:100%" onclick="document.getElementById('coverFileInput').click()">📷 Photo</button></div>
+    </div>
+    <input type="file" id="coverFileInput" accept="image/*" style="display:none" onchange="handleCoverFile(event)">
+    <div id="coverPreview"></div>
+    <p style="font-size:.72rem;color:var(--muted);margin-top:4px">URL depuis un site (appui long sur l'image → Copier l'adresse), ou 📷 pour prendre/choisir une photo — la photo est compressée automatiquement pour rester légère.</p>
+    <div class="toolbar" style="margin-top:8px">
+      <button type="button" class="chip" id="cPending" onclick="this.classList.toggle('on')">⏳ À mettre à jour plus tard (référence pas encore trouvée)</button>
+    </div>
     <label>Notes personnelles</label>
     <textarea id="fNotes" rows="2"></textarea>
     <div class="toolbar" style="margin-top:12px">
@@ -248,6 +269,11 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
       <button type="button" class="chip" id="cLu" onclick="this.classList.toggle('on')">Lu</button>
       <button type="button" class="chip" id="cEO" onclick="this.classList.toggle('on')">Édition originale</button>
       <button type="button" class="chip" id="cDed" onclick="this.classList.toggle('on')">Dédicacé</button>
+    </div>
+    <label>Support (coche les deux si tu as les deux)</label>
+    <div class="toolbar">
+      <button type="button" class="chip on" id="cPhys" onclick="this.classList.toggle('on')">📕 Physique</button>
+      <button type="button" class="chip" id="cScan" onclick="this.classList.toggle('on')">💻 Scan</button>
     </div>
     <input type="hidden" id="fEditId">
     <button class="btn" style="margin-top:14px" onclick="saveAlbum()">Enregistrer l'album</button>
@@ -264,24 +290,28 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
 
 <script>
 "use strict";
-const APP_VERSION="V-B.1.3.1";
+const APP_VERSION="V-B.1.6.1";
 const LS_KEY="mabdtheque_v1";
 /* REX cartes anglais : demander un stockage persistant pour éviter la purge Safari */
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
 
 /* ================= Modèle =================
    album = {id, serie, type, tome, titre, isbn, auteurs, editeur,
-            cover, notes, possede, lu, prete(""|nom), eo, dedicace, dateAjout}
+            cover, notes, possede, lu, prete(""|nom), eo, dedicace, dateAjout,
+            support:["physique","scan"], pending:Bool}  — pending = couverture/infos
+            à compléter plus tard, quand la référence existera dans nos sources
    series = { "Nom de série": {nbTomes:Number} }  — métadonnées par série */
 let db={albums:[],series:{}};
 try{const raw=localStorage.getItem(LS_KEY); if(raw) db=JSON.parse(raw);}catch(e){}
 if(!db.series) db.series={};
+/* migration douce : anciens albums sans "support" -> considérés physiques */
+for(const a of db.albums) if(!Array.isArray(a.support)) a.support=["physique"];
 function persist(){try{localStorage.setItem(LS_KEY,JSON.stringify(db));}catch(e){toast("⚠️ Sauvegarde locale impossible");}}
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
 /* ================= Navigation ================= */
-let view="coll", filterType="", search="";
+let view="coll", filterType="", filterSupport="", search="", sortMode="alpha", displayMode="liste";
 function go(v){view=v;
   ["coll","wish","stats"].forEach(x=>{const b=document.getElementById("nav-"+x);if(b)b.classList.toggle("active",x===v);});
   document.getElementById("nav-add").classList.remove("active");
@@ -317,6 +347,20 @@ function renderColl(){
     ${["","BD","Manga","Comics"].map(t=>`<button class="chip ${filterType===t?"on":""}"
       onclick="filterType='${t}';render()">${t||"Tout"}</button>`).join("")}
   </div>
+  <div class="toolbar">
+    ${[["","Tout support"],["physique","📕 Physique"],["scan","💻 Scan"]].map(([v,l])=>`<button class="chip ${filterSupport===v?"on":""}"
+      onclick="filterSupport='${v}';render()">${l}</button>`).join("")}
+  </div>
+  <div class="toolbar">
+    <select id="sortSelect" style="flex:1" onchange="sortMode=this.value;render()">
+      <option value="alpha" ${sortMode==="alpha"?"selected":""}>Trier : Alphabétique</option>
+      <option value="nb" ${sortMode==="nb"?"selected":""}>Trier : Nombre d'albums</option>
+      <option value="recent" ${sortMode==="recent"?"selected":""}>Trier : Ajout récent</option>
+      <option value="completion" ${sortMode==="completion"?"selected":""}>Trier : % complété</option>
+    </select>
+    <button class="chip ${displayMode==='liste'?'on':''}" onclick="displayMode='liste';render()">☰ Liste</button>
+    <button class="chip ${displayMode==='mosaique'?'on':''}" onclick="displayMode='mosaique';render()">▦ Mosaïque</button>
+  </div>
   <div id="collResults">${collResultsHTML()}</div>`;
   return h;
 }
@@ -325,24 +369,47 @@ function updateCollResults(){
   if(d)d.innerHTML=collResultsHTML();
 }
 function collResultsHTML(){
-  const owned=seriesMap().map(s=>({...s,albums:s.albums}))
-    .filter(s=>s.albums.some(a=>a.possede))
+  let owned=seriesMap().map(s=>({...s,albums:s.albums}))
+    .filter(s=>s.albums.some(a=>a.possede&&(!filterSupport||(a.support||[]).includes(filterSupport))))
     .filter(s=>!filterType||s.type===filterType)
     .filter(s=>{if(!search)return true;const q=search.toLowerCase();
       return s.nom.toLowerCase().includes(q)||s.albums.some(a=>(a.titre||"").toLowerCase().includes(q));});
   if(!owned.length)
     return `<div class="empty"><b>Aucune série ne correspond.</b><br>Vide ta recherche ou touche <b>＋ Ajouter</b> pour enregistrer un album.</div>`;
+  owned=sortSeries(owned);
   let h="";
-  for(const s of owned) h+=serieCard(s);
-  h+=`<div class="legend" style="margin:4px 6px 0">
-    <span><i style="background:var(--ink)"></i>Possédé</span>
-    <span><i style="background:var(--gold)"></i>Lu (liseré)</span>
-    <span><i style="border:2px dashed #c9c3b4;background:none"></i>Manquant</span>
-    <span>Décalé vers le haut = prêté</span></div>`;
+  if(displayMode==="mosaique"){
+    h+=`<div class="mosaic-grid">`+owned.map(s=>serieTile(s)).join("")+`</div>`;
+  }else{
+    for(const s of owned) h+=serieCard(s);
+    h+=`<div class="legend" style="margin:4px 6px 0">
+      <span><i style="background:var(--ink)"></i>Possédé</span>
+      <span><i style="background:var(--gold)"></i>Lu (liseré)</span>
+      <span><i style="border:2px dashed #c9c3b4;background:none"></i>Manquant</span>
+      <span>Décalé vers le haut = prêté</span></div>`;
+  }
   return h;
 }
+function sortSeries(list){
+  const poss=s=>s.albums.filter(a=>a.possede);
+  const nbTot=s=>Math.max(...s.albums.map(a=>a.tome||0),(db.series[s.nom]&&db.series[s.nom].nbTomes)||0,0);
+  const lastAdd=s=>Math.max(...s.albums.map(a=>a.dateAjout?new Date(a.dateAjout).getTime():0),0);
+  const arr=[...list];
+  if(sortMode==="nb") arr.sort((a,b)=>poss(b).length-poss(a).length);
+  else if(sortMode==="recent") arr.sort((a,b)=>lastAdd(b)-lastAdd(a));
+  else if(sortMode==="completion") arr.sort((a,b)=>{
+    const ca=nbTot(a)?poss(a).length/nbTot(a):0, cb=nbTot(b)?poss(b).length/nbTot(b):0;
+    return cb-ca;});
+  else arr.sort((a,b)=>a.nom.localeCompare(b.nom,"fr"));
+  return arr;
+}
+function serieThumb(s){
+  const withCover=s.albums.find(a=>a.possede&&a.cover);
+  if(withCover) return `<img class="serie-thumb" src="${esc(withCover.cover)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=\\'serie-thumb ph\\'>${esc(s.nom.slice(0,2).toUpperCase())}</div>'">`;
+  return `<div class="serie-thumb ph">${esc(s.nom.slice(0,2).toUpperCase())}</div>`;
+}
 function serieCard(s){
-  const poss=s.albums.filter(a=>a.possede);
+  const poss=s.albums.filter(a=>a.possede&&(!filterSupport||(a.support||[]).includes(filterSupport)));
   const nbDecl=(db.series[s.nom]&&db.series[s.nom].nbTomes)||0;
   const maxT=Math.max(...s.albums.map(a=>a.tome||0),nbDecl,0);
   const byTome=new Map(); for(const a of s.albums) if(a.tome) byTome.set(a.tome,a);
@@ -358,11 +425,22 @@ function serieCard(s){
   }else{
     for(const a of poss) spines+=`<button class="spine owned ${a.lu?"lu":""} ${a.prete?"prete":""}" onclick="event.stopPropagation();openEdit('${a.id}')">${a.tome||"·"}</button>`;
   }
-  const manq=maxT>0?Math.max(0,maxT-poss.filter(a=>a.tome).length):0;
+  const total=maxT>0?maxT:poss.length;
+  const compte=`${poss.length}/${total}`;
   return `<div class="serie-card" onclick="openSerie('${esc(s.nom)}')">
-    <div class="serie-head"><h3>${esc(s.nom)}</h3><span class="badge ${esc(s.type)}">${esc(s.type)}</span></div>
-    <div class="serie-meta">${poss.length} possédé${poss.length>1?"s":""}${manq?` · <b style="color:var(--red)">${manq} manquant${manq>1?"s":""}</b>`:""} · ${poss.filter(a=>a.lu).length} lu${poss.filter(a=>a.lu).length>1?"s":""}</div>
+    <div class="serie-head">${serieThumb(s)}<h3>${esc(s.nom)}</h3><span class="badge ${esc(s.type)}">${esc(s.type)}</span></div>
+    <div class="serie-meta"><b>${compte}</b> possédés · ${poss.filter(a=>a.lu).length} lu${poss.filter(a=>a.lu).length>1?"s":""}${poss.some(a=>(a.support||[]).includes("scan"))?" · 💻 scan présent":""}</div>
     <div class="shelf">${spines}</div><div class="shelf-board"></div>
+  </div>`;
+}
+function serieTile(s){
+  const poss=s.albums.filter(a=>a.possede&&(!filterSupport||(a.support||[]).includes(filterSupport)));
+  const nbDecl=(db.series[s.nom]&&db.series[s.nom].nbTomes)||0;
+  const maxT=Math.max(...s.albums.map(a=>a.tome||0),nbDecl,0);
+  const total=maxT>0?maxT:poss.length;
+  return `<div class="tile" onclick="openSerie('${esc(s.nom)}')">
+    ${serieThumb(s)}
+    <div class="tile-info"><b>${esc(s.nom)}</b><span>${poss.length}/${total} · <span class="badge ${esc(s.type)}" style="padding:1px 5px">${esc(s.type)}</span></span></div>
   </div>`;
 }
 function quickWish(serie,type,tome){
@@ -405,6 +483,9 @@ function albumRow(a){
         ${a.prete?`<span class="tag prete">Prêté à ${esc(a.prete)}</span>`:""}
         ${a.eo?`<span class="tag eo">EO</span>`:""}
         ${a.dedicace?`<span class="tag">Dédicacé</span>`:""}
+        ${(a.support||[]).includes("physique")?`<span class="tag">📕 Physique</span>`:""}
+        ${(a.support||[]).includes("scan")?`<span class="tag">💻 Scan</span>`:""}
+        ${a.pending?`<span class="tag" style="background:var(--gold);border-color:var(--gold);color:#fff">⏳ À MàJ</span>`:""}
       </div></div></div>`;
 }
 function saveNbTomes(nom){
@@ -528,7 +609,74 @@ function renderStats(){
     h+=`</div>`;
   }
   h+=`</div><p style="text-align:center;color:var(--muted);font-size:.72rem;margin-top:16px">${APP_VERSION} · données stockées dans ce navigateur · pense à exporter régulièrement</p>`;
+  const pend=db.albums.filter(a=>a.pending&&a.isbn);
+  if(pend.length){
+    h+=`<div class="stat wide" style="text-align:left;margin-top:10px">
+      <div class="l" style="margin-bottom:6px">⏳ ${pend.length} album${pend.length>1?"s":""} à mettre à jour</div>
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:8px">Relance une recherche sur Google Books / OpenLibrary / BnF pour tous ces albums d'un coup — utile si tu reviens quelques semaines après une sortie récente.</p>
+      <button class="btn secondary" onclick="bulkUpdatePending()">🔄 Réessayer les recherches (${pend.length})</button>
+      <div id="bulkOut" style="margin-top:8px;font-size:.82rem;color:var(--muted)"></div>
+    </div>`;
+  }
   return h;
+}
+async function bulkUpdatePending(){
+  const pend=db.albums.filter(a=>a.pending&&a.isbn);
+  const out=document.getElementById("bulkOut");
+  let ok=0;
+  for(let i=0;i<pend.length;i++){
+    const a=pend[i];
+    out.textContent=`Vérification ${i+1}/${pend.length} : ${a.titre||a.isbn}…`;
+    const found=await tryFetchISBN(a.isbn);
+    if(found){
+      if(!a.cover&&found.cover) a.cover=found.cover;
+      if(!a.auteurs&&found.auteurs) a.auteurs=found.auteurs;
+      if(!a.editeur&&found.editeur) a.editeur=found.editeur;
+      if((!a.titre||a.titre===a.isbn)&&found.titre) a.titre=found.titre;
+      a.pending=false; ok++;
+    }
+    await new Promise(r=>setTimeout(r,400)); /* ménage l'API, évite le débit limité */
+  }
+  persist();
+  out.textContent=`Terminé : ${ok}/${pend.length} albums complétés.`;
+  render();toast(ok?`✓ ${ok} album${ok>1?"s":""} mis à jour`:"Aucune nouveauté pour l'instant");
+}
+/* factorisation : la même cascade que lookupISBN, mais sans toucher au formulaire */
+async function tryFetchISBN(isbnRaw){
+  const isbn=isbnRaw.replace(/[^0-9X]/gi,"");
+  if(isbn.length<10) return null;
+  for(const q of [`isbn:${isbn}`,`"${isbn}"`,isbn]){
+    try{
+      const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&country=FR`);
+      if(!r.ok) continue;
+      const j=await r.json();
+      if(j.totalItems>0&&j.items){
+        const it=j.items.find(x=>((x.volumeInfo||{}).industryIdentifiers||[]).some(id=>id.identifier===isbn))||j.items[0];
+        const v=it.volumeInfo;
+        return {titre:v.title||"",auteurs:(v.authors||[]).join(", "),editeur:v.publisher||"",
+          cover:(v.imageLinks&&(v.imageLinks.thumbnail||v.imageLinks.smallThumbnail)||"").replace("http://","https://")};
+      }
+    }catch(e){}
+  }
+  try{
+    const r=await fetch(`https://openlibrary.org/api/books?bibkeys=ISBN:${isbn}&format=json&jscmd=data`);
+    const j=await r.json(); const v=j["ISBN:"+isbn];
+    if(v) return {titre:v.title||"",auteurs:(v.authors||[]).map(a=>a.name).join(", "),
+      editeur:(v.publishers||[]).map(p=>p.name).join(", "),
+      cover:(v.cover&&(v.cover.medium||v.cover.small))||`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`};
+  }catch(e){}
+  try{
+    const url=`https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=bib.isbn%3D%22${isbn}%22&recordSchema=dublincore&maximumRecords=1`;
+    const r=await fetch(url); const txt=await r.text();
+    const xml=new DOMParser().parseFromString(txt,"application/xml");
+    if(!xml.querySelector("parsererror")){
+      const rec=xml.querySelector("recordData")||xml;
+      const get=tag=>{const el=rec.getElementsByTagNameNS("*",tag)[0];return el?el.textContent.trim():"";};
+      const titre=get("title");
+      if(titre) return {titre,auteurs:[...rec.getElementsByTagNameNS("*","creator")].map(e=>e.textContent.trim()).join(", "),editeur:get("publisher"),cover:""};
+    }
+  }catch(e){}
+  return null;
 }
 
 /* ================= Ajout / édition ================= */
@@ -548,12 +696,17 @@ function openEdit(id){
   document.getElementById("fAuteurs").value=a.auteurs||"";
   document.getElementById("fEditeur").value=a.editeur||"";
   document.getElementById("fCover").value=a.cover||"";
+  showCoverPreview(a.cover||"");
   document.getElementById("fNotes").value=a.notes||"";
   document.getElementById("isbnInput").value=a.isbn||"";
   document.getElementById("cOwn").classList.toggle("on",!!a.possede);
   document.getElementById("cLu").classList.toggle("on",!!a.lu);
   document.getElementById("cEO").classList.toggle("on",!!a.eo);
   document.getElementById("cDed").classList.toggle("on",!!a.dedicace);
+  const sup=Array.isArray(a.support)?a.support:["physique"];
+  document.getElementById("cPhys").classList.toggle("on",sup.includes("physique"));
+  document.getElementById("cScan").classList.toggle("on",sup.includes("scan"));
+  document.getElementById("cPending").classList.toggle("on",!!a.pending);
   document.getElementById("btnDelete").style.display="block";
   /* champ prêt */
   addPretField(a.prete||"");
@@ -569,14 +722,32 @@ function addPretField(val){
   }
   f.value=val;
 }
+function checkSerieMatch(){
+  const val=document.getElementById("fSerie").value.trim();
+  const w=document.getElementById("serieWarn");
+  if(!val){w.innerHTML="";return;}
+  const editId=document.getElementById("fEditId").value;
+  const exact=seriesMap().find(s=>s.nom.toLowerCase()===val.toLowerCase()&&s.nom!==val);
+  const proche=!exact&&seriesMap().find(s=>s.nom!==val&&(s.nom.toLowerCase().includes(val.toLowerCase())||val.toLowerCase().includes(s.nom.toLowerCase()))&&val.length>2);
+  if(exact){
+    w.innerHTML=`<p style="font-size:.78rem;color:var(--blue);margin-top:4px">ℹ️ Différence de casse avec la série existante « ${esc(exact.nom)} » (${exact.albums.length} albums) — touche pour corriger l'orthographe.</p>
+      <button type="button" class="chip" onclick="document.getElementById('fSerie').value='${esc(exact.nom)}';checkSerieMatch()">Utiliser « ${esc(exact.nom)} »</button>`;
+  }else if(proche&&!editId){
+    w.innerHTML=`<p style="font-size:.78rem;color:var(--red);margin-top:4px">⚠️ Nom proche d'une série existante : « ${esc(proche.nom)} » (${proche.albums.length} albums). Vérifie que ce n'est pas la même avant d'enregistrer, sinon cet album ira dans la mauvaise série.</p>`;
+  }else w.innerHTML="";
+}
 function clearForm(){
   ["fSerie","fTome","fTitre","fAuteurs","fEditeur","fCover","fNotes","isbnInput","fEditId","titleSearch"].forEach(i=>document.getElementById(i).value="");
   document.getElementById("titleOut").innerHTML="";
   document.getElementById("fType").value="BD";
   document.getElementById("cOwn").classList.add("on");
-  ["cLu","cEO","cDed"].forEach(i=>document.getElementById(i).classList.remove("on"));
+  ["cLu","cEO","cDed","cScan"].forEach(i=>document.getElementById(i).classList.remove("on"));
+  document.getElementById("cPhys").classList.add("on");
+  document.getElementById("cPending").classList.remove("on");
   document.getElementById("btnDelete").style.display="none";
   document.getElementById("lookupOut").innerHTML="";
+  document.getElementById("serieWarn").innerHTML="";
+  document.getElementById("coverPreview").innerHTML="";
   addPretField("");
   stopScan();
 }
@@ -601,7 +772,11 @@ function saveAlbum(){
     eo:document.getElementById("cEO").classList.contains("on"),
     dedicace:document.getElementById("cDed").classList.contains("on"),
     prete:(document.getElementById("fPrete")||{value:""}).value.trim(),
+    support:[document.getElementById("cPhys").classList.contains("on")?"physique":null,
+             document.getElementById("cScan").classList.contains("on")?"scan":null].filter(Boolean),
+    pending:document.getElementById("cPending").classList.contains("on"),
   };
+  if(!data.support.length) data.support=["physique"];
   if(id){Object.assign(db.albums.find(x=>x.id===id),data);toast("Album mis à jour");}
   else{db.albums.push({id:uid(),dateAjout:new Date().toISOString(),...data});toast("Album ajouté 📚");}
   persist();closeSheet("ovAdd");go("coll");
@@ -614,7 +789,39 @@ function deleteAlbum(){
 }
 function closeSheet(id){document.getElementById(id).classList.remove("open");if(id==="ovAdd")stopScan();}
 
-/* ================= Recherche par titre (V-B.1.3.1) ================= */
+/* ================= Couverture depuis les photos (V-B.1.6.1) =================
+   Compression côté client pour rester léger dans le stockage du navigateur
+   (localStorage ~5-10 Mo au total selon les appareils). */
+function handleCoverFile(ev){
+  const file=ev.target.files[0]; if(!file)return;
+  const img=new Image();
+  const reader=new FileReader();
+  reader.onload=()=>{
+    img.onload=()=>{
+      const maxW=280;
+      const scale=Math.min(1,maxW/img.width);
+      const canvas=document.createElement("canvas");
+      canvas.width=Math.round(img.width*scale);
+      canvas.height=Math.round(img.height*scale);
+      const ctx=canvas.getContext("2d");
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      const dataUrl=canvas.toDataURL("image/jpeg",0.75);
+      document.getElementById("fCover").value=dataUrl;
+      showCoverPreview(dataUrl);
+      toast("Photo ajoutée ✓");
+    };
+    img.src=reader.result;
+  };
+  reader.onerror=()=>toast("Impossible de lire cette photo");
+  reader.readAsDataURL(file);
+  ev.target.value="";
+}
+function showCoverPreview(url){
+  const p=document.getElementById("coverPreview");
+  p.innerHTML=url?`<img src="${esc(url)}" style="width:70px;height:96px;object-fit:cover;border-radius:4px;margin-top:8px" alt="">`:"";
+}
+
+/* ================= Recherche par titre (V-B.1.6.1) ================= */
 let _titleResults=[];
 async function searchByTitle(){
   const q=document.getElementById("titleSearch").value.trim();
@@ -624,8 +831,9 @@ async function searchByTitle(){
   let items=[];
   try{
     const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&maxResults=12&langRestrict=fr&country=FR&printType=books&orderBy=relevance`);
+    if(!r.ok){const t=await r.text();out.innerHTML=`<p style="color:var(--red);margin-top:10px;font-size:.82rem">Erreur API ${r.status} : ${esc(t.slice(0,300))}</p>`;return;}
     const j=await r.json(); items=j.items||[];
-  }catch(e){out.innerHTML=`<p style="color:var(--red);margin-top:10px">Recherche impossible — vérifie ta connexion.</p>`;return;}
+  }catch(e){out.innerHTML=`<p style="color:var(--red);margin-top:10px;font-size:.82rem">Appel réseau impossible (${esc(e.message)}). Si tu es sur un Wi-Fi filtré (travail), passe en 4G et réessaie.</p>`;return;}
   if(!items.length){out.innerHTML=`<p style="color:var(--muted);margin-top:10px">Aucun résultat pour « ${esc(q)} ». Essaie avec le nom de la série seul.</p>`;return;}
   _titleResults=items.map(it=>{
     const v=it.volumeInfo||{};
@@ -652,6 +860,7 @@ function pickTitleResult(i){
   const m=full.match(/^(.*?)[,–-]?\s*(?:tome|t\.?|vol\.?|#)\s*(\d+)/i);
   if(m){document.getElementById("fSerie").value=m[1].trim();document.getElementById("fTome").value=m[2];}
   else document.getElementById("fSerie").value=document.getElementById("fSerie").value||x.titre;
+  checkSerieMatch();
   document.getElementById("titleOut").innerHTML="";
   toast("Fiche pré-remplie — vérifie et complète ✓");
 }
@@ -664,12 +873,14 @@ async function lookupISBN(){
   out.innerHTML=`<p style="margin-top:10px;color:var(--muted)">Recherche en cours…</p>`;
   let found=null;
   /* cascade : l'API Google Books rate souvent des ISBN (surtout 979-) via "isbn:" ;
-     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.3.1) */
+     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.6.1) */
   const gbQueries=[`isbn:${isbn}`,`"${isbn}"`,isbn];
+  let lastErr="";
   for(const q of gbQueries){
     if(found)break;
     try{
       const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&country=FR`);
+      if(!r.ok){lastErr=`API ${r.status}`;const t=await r.text();lastErr+=" "+t.slice(0,200);continue;}
       const j=await r.json();
       if(j.totalItems>0&&j.items){
         /* privilégier l'item dont l'ISBN correspond exactement */
@@ -679,7 +890,7 @@ async function lookupISBN(){
           cover:(v.imageLinks&&(v.imageLinks.thumbnail||v.imageLinks.smallThumbnail)||"").replace("http://","https://"),
           resume:v.description||""};
       }
-    }catch(e){}
+    }catch(e){lastErr="réseau : "+e.message;}
   }
   if(!found){
     try{
@@ -688,9 +899,28 @@ async function lookupISBN(){
       if(v) found={titre:v.title||"",auteurs:(v.authors||[]).map(a=>a.name).join(", "),
         editeur:(v.publishers||[]).map(p=>p.name).join(", "),
         cover:(v.cover&&(v.cover.medium||v.cover.small))||`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`,resume:""};
-    }catch(e){}
+    }catch(e){if(!lastErr)lastErr="réseau : "+e.message;}
   }
-  if(!found){out.innerHTML=`<p style="margin-top:10px;color:var(--red);font-weight:600">Introuvable dans Google Books et OpenLibrary — saisis les infos à la main ci-dessous.</p>`;return;}
+  /* 3e recours : BnF (catalogue général, SRU/Dublin Core) — très complet sur l'édition
+     française mais pas d'image de couverture (V-B.1.6.1) */
+  if(!found){
+    try{
+      const url=`https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=bib.isbn%3D%22${isbn}%22&recordSchema=dublincore&maximumRecords=1`;
+      const r=await fetch(url);
+      const txt=await r.text();
+      const xml=new DOMParser().parseFromString(txt,"application/xml");
+      if(xml.querySelector("parsererror")) throw new Error("XML BnF invalide");
+      const rec=xml.querySelector("recordData")||xml;
+      const get=tag=>{const el=rec.getElementsByTagNameNS("*",tag)[0];return el?el.textContent.trim():"";};
+      const titre=get("title"); const auteurs=[...rec.getElementsByTagNameNS("*","creator")].map(e=>e.textContent.trim()).join(", ");
+      const editeur=get("publisher");
+      if(titre) found={titre,auteurs,editeur,cover:"",resume:"",source:"bnf"};
+    }catch(e){if(!lastErr)lastErr="BnF : "+e.message;}
+  }
+  if(!found){out.innerHTML=`<p style="margin-top:10px;color:var(--red);font-weight:600">Introuvable dans Google Books, OpenLibrary et la BnF — probablement une parution trop récente pour ces catalogues.</p>
+    <a href="https://www.google.com/search?q=${isbn}" target="_blank" rel="noopener" class="btn secondary" style="display:block;text-align:center;text-decoration:none;margin-top:8px">🔍 Chercher « ${esc(isbn)} » sur Google</a>
+    <p style="font-size:.78rem;color:var(--muted);margin-top:6px">Ouvre le résultat, recopie titre/auteur/éditeur ci-dessous, et pour la couverture : appuie longuement sur l'image du livre → Copier l'image → colle son adresse si ton navigateur le permet, ou laisse vide.</p>
+    ${lastErr?`<p style="font-size:.72rem;color:var(--muted)">Détail technique : ${esc(lastErr)}</p>`:""}`;return;}
   document.getElementById("fTitre").value=found.titre;
   document.getElementById("fAuteurs").value=found.auteurs;
   document.getElementById("fEditeur").value=found.editeur;
@@ -698,7 +928,14 @@ async function lookupISBN(){
   /* devine série + tome depuis le titre : "Titre, Tome 3" / "Titre T3" / "Titre - 3" */
   const m=found.titre.match(/^(.*?)[,–-]?\s*(?:tome|t\.?|vol\.?|#)\s*(\d+)/i);
   if(m){document.getElementById("fSerie").value=m[1].trim();document.getElementById("fTome").value=m[2];}
-  out.innerHTML=`<div class="lookup-result">
+  checkSerieMatch();
+  checkSerieMatch();
+  out.innerHTML=found.source==="bnf"
+    ? `<div class="lookup-result"><div class="cover">?</div>
+      <div style="font-size:.88rem"><b>${esc(found.titre)}</b><br>
+      <span style="color:var(--muted)">${esc(found.auteurs)}${found.editeur?" · "+esc(found.editeur):""}</span><br>
+      <span style="color:var(--ok);font-weight:700">✓ Fiche trouvée via la BnF</span> — pas de couverture disponible, ajoute une image si tu en as une.</div></div>`
+    : `<div class="lookup-result">
     ${found.cover?`<img class="cover" src="${esc(found.cover)}" alt="">`:""}
     <div style="font-size:.88rem"><b>${esc(found.titre)}</b><br>
     <span style="color:var(--muted)">${esc(found.auteurs)}${found.editeur?" · "+esc(found.editeur):""}</span><br>
@@ -785,6 +1022,7 @@ function importJSON(ev){
       if(!Array.isArray(albums)) throw 0;
       if(!confirm(`Importer ${albums.length} albums ? Cela remplace la collection actuelle (${db.albums.length} albums).`))return;
       db.albums=albums; db.series=(j.series&&typeof j.series==="object")?j.series:{};
+      for(const a of db.albums) if(!Array.isArray(a.support)) a.support=["physique"];
       persist(); render(); toast("Import réussi ✓");
     }catch(e){toast("Fichier invalide");}
   };
