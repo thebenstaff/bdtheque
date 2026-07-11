@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Ma BDthèque">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
-<title>Ma BDthèque — V-B.1.6.1</title>
+<title>Ma BDthèque — V-B.1.6.3</title>
 <style>
 :root{
   --ink:#22242b;        /* encre */
@@ -290,7 +290,7 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
 
 <script>
 "use strict";
-const APP_VERSION="V-B.1.6.1";
+const APP_VERSION="V-B.1.6.3";
 const LS_KEY="mabdtheque_v1";
 /* REX cartes anglais : demander un stockage persistant pour éviter la purge Safari */
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
@@ -666,17 +666,74 @@ async function tryFetchISBN(isbnRaw){
       cover:(v.cover&&(v.cover.medium||v.cover.small))||`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg`};
   }catch(e){}
   try{
-    const url=`https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=bib.isbn%3D%22${isbn}%22&recordSchema=dublincore&maximumRecords=1`;
-    const r=await fetch(url); const txt=await r.text();
-    const xml=new DOMParser().parseFromString(txt,"application/xml");
-    if(!xml.querySelector("parsererror")){
-      const rec=xml.querySelector("recordData")||xml;
-      const get=tag=>{const el=rec.getElementsByTagNameNS("*",tag)[0];return el?el.textContent.trim():"";};
-      const titre=get("title");
-      if(titre) return {titre,auteurs:[...rec.getElementsByTagNameNS("*","creator")].map(e=>e.textContent.trim()).join(", "),editeur:get("publisher"),cover:""};
-    }
+    const r=await fetchBnf(isbn);
+    if(r) return r;
   }catch(e){}
   return null;
+}
+
+/* ================= BnF : appel + nettoyage de la notice (V-B.1.6.3) =================
+   Le champ dc:title de la BnF contient souvent la notice complète
+   ("Titre. [Tome un] / scénario, X ; dessin, Y ; ..."). On la découpe :
+   titre propre / mentions de responsabilité (scénariste, dessinateur),
+   et on convertit "[Tome un]" -> tome:1 (mots français jusqu'à trente). */
+const FR_NUM={un:1,une:1,premier:1,deux:2,trois:3,quatre:4,cinq:5,six:6,sept:7,huit:8,neuf:9,dix:10,
+  onze:11,douze:12,treize:13,quatorze:14,quinze:15,seize:16,"dix-sept":17,"dix-huit":18,"dix-neuf":19,
+  vingt:20,"vingt-et-un":21,"vingt-deux":22,trente:30};
+function cleanBnfName(raw){
+  return String(raw||"")
+    .replace(/\s*\([^)]*\d[^)]*\)\s*/g," ")               /* dates de vie "(1973-....)" */
+    .replace(/\.\s*(Auteur du texte|Illustrateur|Traducteur|Coloriste|Scénariste|Dessinateur)\.?\s*$/i,"")
+    .replace(/\s{2,}/g," ").trim();
+}
+function parseBnfTitle(raw){
+  const [titrePart,respPart]=String(raw||"").split(/\s*\/\s*/,2);
+  let tome=null;
+  const mB=titrePart&&titrePart.match(/\[\s*tome\s+([a-zàâéèêîïôûù-]+|\d+)\s*\]/i);
+  if(mB){ const w=mB[1].toLowerCase(); tome=/^\d+$/.test(w)?parseInt(w,10):(FR_NUM[w]||null); }
+  const titre=(titrePart||raw||"").replace(/\[[^\]]*\]/g,"").replace(/\.\s*$/,"").trim();
+  let auteurs="";
+  if(respPart){
+    const roles=[...respPart.matchAll(/(scénario|dessin|texte|dessin et couleur)\s*,\s*([^;]+)/gi)];
+    if(roles.length) auteurs=roles.map(m=>m[2].trim().replace(/\.\.\.$/,"").trim()).join(", ");
+  }
+  return {titre,tome,auteurs};
+}
+async function fetchCoverOnly(titre,auteurs,isbn){
+  /* 1) pari direct sur le générateur OpenLibrary (fonctionne parfois même
+     quand la fiche bibliographique complète est absente de leur API) */
+  try{
+    const guess=`https://covers.openlibrary.org/b/isbn/${isbn}-M.jpg?default=false`;
+    const r=await fetch(guess,{method:"HEAD"});
+    if(r.ok) return guess;
+  }catch(e){}
+  /* 2) recherche Google Books par titre + auteur plutôt que par ISBN —
+     retrouve souvent une couverture même quand la fiche ISBN exacte manque */
+  try{
+    const auth=(auteurs||"").split(",")[0].trim();
+    const q=`intitle:${titre}${auth?` inauthor:${auth}`:""}`;
+    const r=await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(q)}&country=FR&maxResults=1`);
+    const j=await r.json();
+    const v=(j.items&&j.items[0]&&j.items[0].volumeInfo)||{};
+    const cov=(v.imageLinks&&(v.imageLinks.thumbnail||v.imageLinks.smallThumbnail)||"").replace("http://","https://");
+    if(cov) return cov;
+  }catch(e){}
+  return "";
+}
+async function fetchBnf(isbn){
+  const url=`https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=bib.isbn%3D%22${isbn}%22&recordSchema=dublincore&maximumRecords=1`;
+  const r=await fetch(url); const txt=await r.text();
+  const xml=new DOMParser().parseFromString(txt,"application/xml");
+  if(xml.querySelector("parsererror")) return null;
+  const rec=xml.querySelector("recordData")||xml;
+  const get=tag=>{const el=rec.getElementsByTagNameNS("*",tag)[0];return el?el.textContent.trim():"";};
+  const rawTitle=get("title"); if(!rawTitle) return null;
+  const {titre,tome,auteurs:auteursTitre}=parseBnfTitle(rawTitle);
+  const creators=[...rec.getElementsByTagNameNS("*","creator")].map(e=>cleanBnfName(e.textContent)).filter(Boolean);
+  const auteurs=auteursTitre||creators.join(", ");
+  const editeur=get("publisher").replace(/\s*\([^)]+\)\s*$/,"").trim(); /* retire "(Paris)" */
+  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.6.3 : couverture de secours */
+  return {titre,tome,auteurs,editeur,cover,resume:"",source:"bnf"};
 }
 
 /* ================= Ajout / édition ================= */
@@ -789,7 +846,7 @@ function deleteAlbum(){
 }
 function closeSheet(id){document.getElementById(id).classList.remove("open");if(id==="ovAdd")stopScan();}
 
-/* ================= Couverture depuis les photos (V-B.1.6.1) =================
+/* ================= Couverture depuis les photos (V-B.1.6.3) =================
    Compression côté client pour rester léger dans le stockage du navigateur
    (localStorage ~5-10 Mo au total selon les appareils). */
 function handleCoverFile(ev){
@@ -821,7 +878,7 @@ function showCoverPreview(url){
   p.innerHTML=url?`<img src="${esc(url)}" style="width:70px;height:96px;object-fit:cover;border-radius:4px;margin-top:8px" alt="">`:"";
 }
 
-/* ================= Recherche par titre (V-B.1.6.1) ================= */
+/* ================= Recherche par titre (V-B.1.6.3) ================= */
 let _titleResults=[];
 async function searchByTitle(){
   const q=document.getElementById("titleSearch").value.trim();
@@ -873,7 +930,7 @@ async function lookupISBN(){
   out.innerHTML=`<p style="margin-top:10px;color:var(--muted)">Recherche en cours…</p>`;
   let found=null;
   /* cascade : l'API Google Books rate souvent des ISBN (surtout 979-) via "isbn:" ;
-     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.6.1) */
+     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.6.3) */
   const gbQueries=[`isbn:${isbn}`,`"${isbn}"`,isbn];
   let lastErr="";
   for(const q of gbQueries){
@@ -902,20 +959,10 @@ async function lookupISBN(){
     }catch(e){if(!lastErr)lastErr="réseau : "+e.message;}
   }
   /* 3e recours : BnF (catalogue général, SRU/Dublin Core) — très complet sur l'édition
-     française mais pas d'image de couverture (V-B.1.6.1) */
+     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.6.3) */
   if(!found){
-    try{
-      const url=`https://catalogue.bnf.fr/api/SRU?version=1.2&operation=searchRetrieve&query=bib.isbn%3D%22${isbn}%22&recordSchema=dublincore&maximumRecords=1`;
-      const r=await fetch(url);
-      const txt=await r.text();
-      const xml=new DOMParser().parseFromString(txt,"application/xml");
-      if(xml.querySelector("parsererror")) throw new Error("XML BnF invalide");
-      const rec=xml.querySelector("recordData")||xml;
-      const get=tag=>{const el=rec.getElementsByTagNameNS("*",tag)[0];return el?el.textContent.trim():"";};
-      const titre=get("title"); const auteurs=[...rec.getElementsByTagNameNS("*","creator")].map(e=>e.textContent.trim()).join(", ");
-      const editeur=get("publisher");
-      if(titre) found={titre,auteurs,editeur,cover:"",resume:"",source:"bnf"};
-    }catch(e){if(!lastErr)lastErr="BnF : "+e.message;}
+    try{ found=await fetchBnf(isbn); }
+    catch(e){if(!lastErr)lastErr="BnF : "+e.message;}
   }
   if(!found){out.innerHTML=`<p style="margin-top:10px;color:var(--red);font-weight:600">Introuvable dans Google Books, OpenLibrary et la BnF — probablement une parution trop récente pour ces catalogues.</p>
     <a href="https://www.google.com/search?q=${isbn}" target="_blank" rel="noopener" class="btn secondary" style="display:block;text-align:center;text-decoration:none;margin-top:8px">🔍 Chercher « ${esc(isbn)} » sur Google</a>
@@ -927,10 +974,11 @@ async function lookupISBN(){
   document.getElementById("fCover").value=found.cover;
   /* devine série + tome depuis le titre : "Titre, Tome 3" / "Titre T3" / "Titre - 3" */
   const m=found.titre.match(/^(.*?)[,–-]?\s*(?:tome|t\.?|vol\.?|#)\s*(\d+)/i);
-  if(m){document.getElementById("fSerie").value=m[1].trim();document.getElementById("fTome").value=m[2];}
+  if(found.tome){document.getElementById("fSerie").value=found.titre.trim();document.getElementById("fTome").value=found.tome;}
+  else if(m){document.getElementById("fSerie").value=m[1].trim();document.getElementById("fTome").value=m[2];}
   checkSerieMatch();
   checkSerieMatch();
-  out.innerHTML=found.source==="bnf"
+  out.innerHTML=(found.source==="bnf"&&!found.cover)
     ? `<div class="lookup-result"><div class="cover">?</div>
       <div style="font-size:.88rem"><b>${esc(found.titre)}</b><br>
       <span style="color:var(--muted)">${esc(found.auteurs)}${found.editeur?" · "+esc(found.editeur):""}</span><br>
@@ -939,7 +987,7 @@ async function lookupISBN(){
     ${found.cover?`<img class="cover" src="${esc(found.cover)}" alt="">`:""}
     <div style="font-size:.88rem"><b>${esc(found.titre)}</b><br>
     <span style="color:var(--muted)">${esc(found.auteurs)}${found.editeur?" · "+esc(found.editeur):""}</span><br>
-    <span style="color:var(--ok);font-weight:700">✓ Fiche pré-remplie — vérifie et complète</span></div></div>`;
+    <span style="color:var(--ok);font-weight:700">✓ Fiche pré-remplie${found.source==="bnf"?" (BnF + couverture retrouvée)":""} — vérifie et complète</span></div></div>`;
 }
 
 /* ================= Scanner code-barres =================
