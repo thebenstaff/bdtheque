@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Ma BDthèque">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
-<title>Ma BDthèque — V-B.1.6.3</title>
+<title>Ma BDthèque — V-B.1.9.0</title>
 <style>
 :root{
   --ink:#22242b;        /* encre */
@@ -137,7 +137,24 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
 .album-row{
   display:flex;gap:10px;background:var(--panel);border-radius:var(--radius);
   box-shadow:var(--shadow);padding:10px;margin-bottom:10px;align-items:center;
+  touch-action:pan-y;will-change:transform;position:relative;z-index:2;
 }
+.swipe-wrap{position:relative;overflow:hidden;border-radius:var(--radius);margin-bottom:10px}
+.swipe-wrap .album-row,.swipe-wrap .serie-card{margin-bottom:0}
+.swipe-action{
+  position:absolute;top:0;bottom:0;width:112px;z-index:1;color:#fff;font-weight:800;
+  font-size:.76rem;display:flex;align-items:center;justify-content:center;text-align:center;
+  line-height:1.25;padding:0 6px;
+}
+.swipe-action.swipe-right{left:0;background:var(--gold)}
+.swipe-action.swipe-left{right:0;background:var(--red)}
+.checkbox{
+  width:26px;height:26px;border:2px solid var(--muted);border-radius:7px;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:var(--panel);
+}
+.album-row.sel{outline:2px solid var(--blue);background:#eaf1f7}
+.album-row.sel .checkbox{background:var(--blue);border-color:var(--blue)}
+.serie-card{touch-action:pan-y;will-change:transform;position:relative;z-index:2;}
 .cover{
   width:52px;height:74px;border-radius:4px;object-fit:cover;background:#e6e1d4;
   flex:0 0 auto;display:flex;align-items:center;justify-content:center;
@@ -290,7 +307,7 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
 
 <script>
 "use strict";
-const APP_VERSION="V-B.1.6.3";
+const APP_VERSION="V-B.1.9.0";
 const LS_KEY="mabdtheque_v1";
 /* REX cartes anglais : demander un stockage persistant pour éviter la purge Safari */
 if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
@@ -413,8 +430,12 @@ function serieCard(s){
   const nbDecl=(db.series[s.nom]&&db.series[s.nom].nbTomes)||0;
   const maxT=Math.max(...s.albums.map(a=>a.tome||0),nbDecl,0);
   const byTome=new Map(); for(const a of s.albums) if(a.tome) byTome.set(a.tome,a);
-  let spines="";
-  if(maxT>0&&maxT<=200){
+  const total=maxT>0?maxT:poss.length;
+  const compte=`${poss.length}/${total}`;
+  const SPINE_LIMIT=12; /* au-delà, l'étagère devient un mur peu lisible (REX) */
+  let shelfHTML;
+  if(maxT>0&&maxT<=SPINE_LIMIT){
+    let spines="";
     for(let t=1;t<=maxT;t++){
       const a=byTome.get(t);
       if(a&&a.possede)
@@ -422,15 +443,27 @@ function serieCard(s){
       else
         spines+=`<button class="spine missing" onclick="event.stopPropagation();quickWish('${esc(s.nom)}','${esc(s.type)}',${t})" aria-label="Tome ${t} manquant">${t}</button>`;
     }
+    shelfHTML=`<div class="shelf">${spines}</div><div class="shelf-board"></div>`;
+  }else if(maxT>SPINE_LIMIT){
+    const missing=[]; for(let t=1;t<=maxT;t++){const a=byTome.get(t); if(!(a&&a.possede)) missing.push(t);}
+    const pct=Math.round(poss.length/total*100);
+    shelfHTML=`<div class="bar" style="margin-top:8px"><i style="width:${pct}%;background:var(--gold)"></i></div>`;
+    if(missing.length)
+      shelfHTML+=`<div class="toolbar" style="margin-top:8px">${missing.slice(0,60).map(t=>
+        `<button class="chip" style="padding:4px 10px;font-size:.75rem" onclick="event.stopPropagation();quickWish('${esc(s.nom)}','${esc(s.type)}',${t})">T${t}</button>`).join("")}
+        ${missing.length>60?`<span style="font-size:.75rem;color:var(--muted);align-self:center">+${missing.length-60} autres</span>`:""}</div>`;
+    else shelfHTML+=`<p style="font-size:.8rem;color:var(--ok);font-weight:700;margin-top:6px">✓ Série complète</p>`;
   }else{
-    for(const a of poss) spines+=`<button class="spine owned ${a.lu?"lu":""} ${a.prete?"prete":""}" onclick="event.stopPropagation();openEdit('${a.id}')">${a.tome||"·"}</button>`;
+    let spines=""; for(const a of poss) spines+=`<button class="spine owned ${a.lu?"lu":""} ${a.prete?"prete":""}" onclick="event.stopPropagation();openEdit('${a.id}')">${a.tome||"·"}</button>`;
+    shelfHTML=`<div class="shelf">${spines}</div><div class="shelf-board"></div>`;
   }
-  const total=maxT>0?maxT:poss.length;
-  const compte=`${poss.length}/${total}`;
-  return `<div class="serie-card" onclick="openSerie('${esc(s.nom)}')">
+  return `<div class="swipe-wrap">
+    <div class="swipe-action swipe-right" onclick="event.stopPropagation();triggerToggle('serie','${esc(s.nom)}')">✓ Tout lu</div>
+    <div class="serie-card" data-swipe-id="${esc(s.nom)}" data-swipe-ctx="serie" onclick="serieTap(this,'${esc(s.nom)}')">
     <div class="serie-head">${serieThumb(s)}<h3>${esc(s.nom)}</h3><span class="badge ${esc(s.type)}">${esc(s.type)}</span></div>
     <div class="serie-meta"><b>${compte}</b> possédés · ${poss.filter(a=>a.lu).length} lu${poss.filter(a=>a.lu).length>1?"s":""}${poss.some(a=>(a.support||[]).includes("scan"))?" · 💻 scan présent":""}</div>
-    <div class="shelf">${spines}</div><div class="shelf-board"></div>
+    ${shelfHTML}
+    </div>
   </div>`;
 }
 function serieTile(s){
@@ -449,8 +482,43 @@ function quickWish(serie,type,tome){
 }
 
 /* ================= Détail série ================= */
+let bulkMode=false, bulkSel=new Set(), bulkSerieName=null;
 function openSerie(nom){
-  const s=seriesMap().find(x=>x.nom===nom); if(!s)return;
+  if(suppressClick)return;
+  bulkMode=false; bulkSel.clear(); bulkSerieName=nom;
+  renderSerieSheet(nom);
+  document.getElementById("ovSerie").classList.add("open");
+}
+function openSerieForce(nom){ /* réaffiche sans réinitialiser la sélection en cours */
+  const s=suppressClick; suppressClick=false; renderSerieSheet(nom); suppressClick=s;
+}
+function toggleBulkMode(nom){
+  bulkMode=!bulkMode; bulkSel.clear(); renderSerieSheet(nom);
+}
+function toggleBulkSel(id){
+  if(bulkSel.has(id)) bulkSel.delete(id); else bulkSel.add(id);
+  renderSerieSheet(bulkSerieName);
+}
+function bulkApply(field,value){
+  for(const id of bulkSel){
+    const a=db.albums.find(x=>x.id===id); if(!a)continue;
+    if(field==="lu") a.lu=value;
+    if(field==="support") a.support=[value];
+  }
+  const n=bulkSel.size; persist(); renderSerieSheet(bulkSerieName); render();
+  toast(`${n} album${n>1?"s":""} mis à jour`);
+}
+function bulkDelete(){
+  const n=bulkSel.size; if(!n)return;
+  if(!confirm(`Supprimer définitivement ${n} album${n>1?"s":""} ?`))return;
+  db.albums=db.albums.filter(a=>!bulkSel.has(a.id));
+  bulkSel.clear(); bulkMode=false; persist();
+  if(db.albums.some(a=>(a.serie||"").trim()===bulkSerieName)) renderSerieSheet(bulkSerieName);
+  else closeSheet("ovSerie");
+  render(); toast(`${n} album${n>1?"s":""} supprimé${n>1?"s":""}`);
+}
+function renderSerieSheet(nom){
+  const s=seriesMap().find(x=>x.nom===nom); if(!s){closeSheet("ovSerie");return;}
   const poss=s.albums.filter(a=>a.possede);
   const nbDecl=(db.series[nom]&&db.series[nom].nbTomes)||"";
   let h=`<button class="close" onclick="closeSheet('ovSerie')">✕</button>
@@ -466,16 +534,28 @@ function openSerie(nom){
       <input type="number" id="luJusqua" inputmode="numeric" style="width:76px" min="1">
       <button class="btn small" onclick="markLuJusqua('${esc(nom)}')">OK</button>
     </div>
-    <button class="btn secondary" style="margin-bottom:12px" onclick="searchSerieOnline('${esc(nom)}')">🔎 Chercher les tomes de la série en ligne</button>
-    <div id="serieSearchOut"></div>`;
-  for(const a of s.albums) h+=albumRow(a);
+    <button class="btn secondary" style="margin-bottom:8px" onclick="searchSerieOnline('${esc(nom)}')">🔎 Chercher les tomes de la série en ligne</button>
+    <div id="serieSearchOut"></div>
+    <div class="toolbar" style="margin-top:4px">
+      <button class="chip ${bulkMode?"on":""}" onclick="toggleBulkMode('${esc(nom)}')">${bulkMode?"✕ Annuler la sélection":"☑️ Sélectionner plusieurs"}</button>
+      ${!bulkMode?`<span style="font-size:.72rem;color:var(--muted)">Balaie ➜ un album : franc = lu/non lu, léger = menu · ➜ franc = poubelle</span>`:""}
+    </div>`;
+  for(const a of s.albums) h+=albumRow(a,"owned",bulkMode,bulkSel.has(a.id));
+  if(bulkMode&&bulkSel.size)
+    h+=`<div class="toolbar" style="position:sticky;bottom:0;background:var(--paper);padding:10px 0 4px;margin-top:6px;border-top:2px solid #d8d3c6">
+      <span style="font-size:.8rem;font-weight:700;width:100%">${bulkSel.size} sélectionné${bulkSel.size>1?"s":""}</span>
+      <button class="chip" onclick="bulkApply('lu',true)">Lu</button>
+      <button class="chip" onclick="bulkApply('lu',false)">Non lu</button>
+      <button class="chip" onclick="bulkApply('support','physique')">📕 Physique</button>
+      <button class="chip" onclick="bulkApply('support','scan')">💻 Scan</button>
+      <button class="chip" style="background:var(--red);color:#fff;border-color:var(--red)" onclick="bulkDelete()">🗑 Supprimer</button>
+    </div>`;
   document.getElementById("serieSheet").innerHTML=h;
-  document.getElementById("ovSerie").classList.add("open");
 }
-function albumRow(a){
+function albumRow(a,ctx,bulk,selected){
+  ctx=ctx||"owned";
   const cov=a.cover?`<img class="cover" src="${esc(a.cover)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=cover>T${a.tome||"?"}</div>'">`:`<div class="cover">T${a.tome||"?"}</div>`;
-  return `<div class="album-row" onclick="openEdit('${a.id}')">${cov}
-    <div class="album-info"><b>${a.tome?`T${a.tome} · `:""}${esc(a.titre||"(sans titre)")}</b>
+  const info=`<div class="album-info"><b>${a.tome?`T${a.tome} · `:""}${esc(a.titre||"(sans titre)")}</b>
       <small>${esc(a.auteurs||"")} ${a.editeur?"· "+esc(a.editeur):""}</small>
       <div class="tags">
         ${a.possede?"":`<span class="tag wish">★ Envie</span>`}
@@ -486,7 +566,16 @@ function albumRow(a){
         ${(a.support||[]).includes("physique")?`<span class="tag">📕 Physique</span>`:""}
         ${(a.support||[]).includes("scan")?`<span class="tag">💻 Scan</span>`:""}
         ${a.pending?`<span class="tag" style="background:var(--gold);border-color:var(--gold);color:#fff">⏳ À MàJ</span>`:""}
-      </div></div></div>`;
+      </div></div>`;
+  if(bulk){
+    return `<div class="album-row ${selected?"sel":""}" onclick="toggleBulkSel('${a.id}')">
+      <div class="checkbox">${selected?"✓":""}</div>${cov}${info}</div>`;
+  }
+  const rightAction=ctx!=="wish"?`<div class="swipe-action swipe-right" onclick="event.stopPropagation();triggerToggle('${ctx}','${a.id}')">✓ Lu / Non lu</div>`:"";
+  const leftAction=`<div class="swipe-action swipe-left" onclick="event.stopPropagation();triggerDelete('${ctx}','${a.id}')">🗑<br>Supprimer</div>`;
+  return `<div class="swipe-wrap">${rightAction}${leftAction}
+    <div class="album-row" data-swipe-id="${a.id}" data-swipe-ctx="${ctx}" onclick="rowTap(this,'${a.id}')">${cov}${info}</div>
+  </div>`;
 }
 function saveNbTomes(nom){
   const n=parseInt(document.getElementById("nbTomesInput").value,10)||0;
@@ -571,7 +660,7 @@ function renderWish(){
   const wish=db.albums.filter(a=>!a.possede).sort((a,b)=>(a.serie||"").localeCompare(b.serie||"","fr")||((a.tome||0)-(b.tome||0)));
   let h=`<h2 class="display" style="text-transform:uppercase;margin-bottom:10px">Mes envies · liste d'achats</h2>`;
   if(!wish.length) return h+`<div class="empty"><b>Aucune envie pour l'instant.</b><br>Touche un tome en pointillés sur une étagère pour l'ajouter ici.</div>`;
-  for(const a of wish) h+=albumRow(a);
+  for(const a of wish) h+=albumRow(a,"wish");
   return h;
 }
 
@@ -610,6 +699,15 @@ function renderStats(){
   }
   h+=`</div><p style="text-align:center;color:var(--muted);font-size:.72rem;margin-top:16px">${APP_VERSION} · données stockées dans ce navigateur · pense à exporter régulièrement</p>`;
   const pend=db.albums.filter(a=>a.pending&&a.isbn);
+  const noCover=db.albums.filter(a=>a.possede&&a.isbn&&!a.cover);
+  if(noCover.length){
+    h+=`<div class="stat wide" style="text-align:left;margin-top:10px">
+      <div class="l" style="margin-bottom:6px">🖼️ ${noCover.length} album${noCover.length>1?"s":""} sans couverture</div>
+      <p style="font-size:.82rem;color:var(--muted);margin-bottom:8px">Relance une recherche d'image pour tous les albums qui ont un ISBN mais pas de couverture (utile après un import).</p>
+      <button class="btn secondary" onclick="bulkFetchCovers()">🖼️ Récupérer les couvertures (${noCover.length})</button>
+      <div id="coverBulkOut" style="margin-top:8px;font-size:.82rem;color:var(--muted)"></div>
+    </div>`;
+  }
   if(pend.length){
     h+=`<div class="stat wide" style="text-align:left;margin-top:10px">
       <div class="l" style="margin-bottom:6px">⏳ ${pend.length} album${pend.length>1?"s":""} à mettre à jour</div>
@@ -619,6 +717,26 @@ function renderStats(){
     </div>`;
   }
   return h;
+}
+async function bulkFetchCovers(){
+  const list=db.albums.filter(a=>a.possede&&a.isbn&&!a.cover);
+  const out=document.getElementById("coverBulkOut");
+  let ok=0;
+  for(let i=0;i<list.length;i++){
+    const a=list[i];
+    out.textContent=`Recherche ${i+1}/${list.length} : ${a.titre||a.isbn}…`;
+    let cover="";
+    try{
+      const isbn=a.isbn.replace(/[^0-9X]/gi,"");
+      cover=await fetchCoverOnly(a.titre||a.serie,a.auteurs,isbn);
+      if(!cover){const r=await tryFetchISBN(a.isbn); if(r&&r.cover) cover=r.cover;}
+    }catch(e){}
+    if(cover){a.cover=cover; ok++;}
+    await new Promise(r=>setTimeout(r,400)); /* ménage les API */
+  }
+  persist();
+  out.textContent=`Terminé : ${ok}/${list.length} couvertures trouvées.`;
+  render();toast(ok?`✓ ${ok} couverture${ok>1?"s":""} récupérée${ok>1?"s":""}`:"Aucune couverture trouvée cette fois");
 }
 async function bulkUpdatePending(){
   const pend=db.albums.filter(a=>a.pending&&a.isbn);
@@ -672,7 +790,7 @@ async function tryFetchISBN(isbnRaw){
   return null;
 }
 
-/* ================= BnF : appel + nettoyage de la notice (V-B.1.6.3) =================
+/* ================= BnF : appel + nettoyage de la notice (V-B.1.9.0) =================
    Le champ dc:title de la BnF contient souvent la notice complète
    ("Titre. [Tome un] / scénario, X ; dessin, Y ; ..."). On la découpe :
    titre propre / mentions de responsabilité (scénariste, dessinateur),
@@ -732,7 +850,7 @@ async function fetchBnf(isbn){
   const creators=[...rec.getElementsByTagNameNS("*","creator")].map(e=>cleanBnfName(e.textContent)).filter(Boolean);
   const auteurs=auteursTitre||creators.join(", ");
   const editeur=get("publisher").replace(/\s*\([^)]+\)\s*$/,"").trim(); /* retire "(Paris)" */
-  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.6.3 : couverture de secours */
+  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.9.0 : couverture de secours */
   return {titre,tome,auteurs,editeur,cover,resume:"",source:"bnf"};
 }
 
@@ -743,6 +861,7 @@ function openAdd(){
   refreshSerieList();
 }
 function openEdit(id){
+  if(suppressClick)return;
   const a=db.albums.find(x=>x.id===id); if(!a)return;
   closeSheet("ovSerie"); clearForm(); refreshSerieList();
   document.getElementById("fEditId").value=a.id;
@@ -778,6 +897,97 @@ function addPretField(val){
     f=document.getElementById("fPrete");
   }
   f.value=val;
+}
+/* ================= Balayage façon iOS Mail (V-B.1.9.0) =================
+   Glissement léger -> le menu d'action reste affiché (comme Mail) ;
+   glissement franc -> l'action se déclenche directement.
+   Droite = action principale (lu/non-lu, tout lu) ; Gauche = suppression. */
+const SWIPE_PARTIAL=45, SWIPE_FULL=130, SWIPE_REVEAL=100;
+let swipeEl=null,swipeStartX=0,swipeStartY=0,swipeMoved=false,suppressClick=false,revealedEl=null;
+function resetSwipe(el){
+  el.style.transition="transform .18s ease";
+  el.style.transform="";
+  el.removeAttribute("data-revealed");
+  if(revealedEl===el) revealedEl=null;
+}
+document.addEventListener("touchstart",e=>{
+  const el=e.target.closest("[data-swipe-id]");
+  if(revealedEl&&revealedEl!==el) resetSwipe(revealedEl);
+  if(!el)return;
+  swipeEl=el; swipeMoved=false;
+  swipeStartX=e.touches[0].clientX; swipeStartY=e.touches[0].clientY;
+  el.style.transition="none";
+},{passive:true});
+document.addEventListener("touchmove",e=>{
+  if(!swipeEl)return;
+  const dx=e.touches[0].clientX-swipeStartX, dy=e.touches[0].clientY-swipeStartY;
+  if(Math.abs(dx)>10) swipeMoved=true;
+  if(swipeMoved&&Math.abs(dx)>Math.abs(dy)){
+    const ctx=swipeEl.getAttribute("data-swipe-ctx");
+    const min=ctx==="wish"?-SWIPE_FULL:-SWIPE_FULL, max=ctx==="wish"?0:SWIPE_FULL;
+    const clamped=Math.max(min,Math.min(dx,max));
+    swipeEl.style.transform=`translateX(${clamped}px)`;
+  }
+},{passive:true});
+document.addEventListener("touchend",()=>{
+  if(!swipeEl)return;
+  const el=swipeEl; swipeEl=null;
+  const m=(el.style.transform||"").match(/-?\d+\.?\d*/);
+  const dx=m?parseFloat(m[0]):0;
+  const ctx=el.getAttribute("data-swipe-ctx");
+  el.style.transition="transform .18s ease";
+  if(swipeMoved&&dx>=SWIPE_FULL&&ctx!=="wish"){
+    el.style.transform=""; suppressClick=true; setTimeout(()=>suppressClick=false,350);
+    triggerToggle(ctx,el.getAttribute("data-swipe-id"));
+  }else if(swipeMoved&&dx<=-SWIPE_FULL){
+    el.style.transform=""; suppressClick=true; setTimeout(()=>suppressClick=false,350);
+    triggerDelete(ctx,el.getAttribute("data-swipe-id"));
+  }else if(swipeMoved&&dx>=SWIPE_PARTIAL&&ctx!=="wish"){
+    el.style.transform=`translateX(${SWIPE_REVEAL}px)`; el.setAttribute("data-revealed","1"); revealedEl=el;
+  }else if(swipeMoved&&dx<=-SWIPE_PARTIAL){
+    el.style.transform=`translateX(-${SWIPE_REVEAL}px)`; el.setAttribute("data-revealed","1"); revealedEl=el;
+  }else{
+    el.style.transform="";
+  }
+  swipeMoved=false;
+});
+function rowTap(el,id){
+  if(el.getAttribute("data-revealed")){resetSwipe(el);return;}
+  if(suppressClick)return;
+  openEdit(id);
+}
+function serieTap(el,nom){
+  if(el.getAttribute("data-revealed")){resetSwipe(el);return;}
+  if(suppressClick)return;
+  openSerie(nom);
+}
+function triggerToggle(ctx,id){
+  if(ctx==="owned"){
+    const a=db.albums.find(x=>x.id===id); if(!a)return;
+    a.lu=!a.lu; persist();
+    if(document.getElementById("ovSerie").classList.contains("open")) openSerieForce(a.serie);
+    render(); toast(a.lu?"Marqué lu ✓":"Marqué non lu");
+  }else if(ctx==="serie"){
+    let c=0;
+    for(const a of db.albums) if((a.serie||"").trim()===id&&a.possede&&!a.lu){a.lu=true;c++;}
+    persist(); render(); toast(c?`${c} album${c>1?"s":""} marqué${c>1?"s":""} lu${c>1?"s":""}`:"Déjà tous lus");
+  }
+}
+function triggerDelete(ctx,id){
+  if(ctx==="wish"){
+    db.albums=db.albums.filter(a=>a.id!==id);
+    persist(); render(); toast("★ Retiré des envies");
+  }else if(ctx==="owned"){
+    if(!confirm("Supprimer définitivement cet album ?"))return;
+    const a=db.albums.find(x=>x.id===id); const nom=a&&a.serie;
+    db.albums=db.albums.filter(x=>x.id!==id);
+    persist();
+    if(document.getElementById("ovSerie").classList.contains("open")){
+      if(nom&&db.albums.some(x=>(x.serie||"").trim()===nom)) renderSerieSheet(nom);
+      else closeSheet("ovSerie");
+    }
+    render(); toast("Album supprimé");
+  }
 }
 function checkSerieMatch(){
   const val=document.getElementById("fSerie").value.trim();
@@ -846,7 +1056,7 @@ function deleteAlbum(){
 }
 function closeSheet(id){document.getElementById(id).classList.remove("open");if(id==="ovAdd")stopScan();}
 
-/* ================= Couverture depuis les photos (V-B.1.6.3) =================
+/* ================= Couverture depuis les photos (V-B.1.9.0) =================
    Compression côté client pour rester léger dans le stockage du navigateur
    (localStorage ~5-10 Mo au total selon les appareils). */
 function handleCoverFile(ev){
@@ -878,7 +1088,7 @@ function showCoverPreview(url){
   p.innerHTML=url?`<img src="${esc(url)}" style="width:70px;height:96px;object-fit:cover;border-radius:4px;margin-top:8px" alt="">`:"";
 }
 
-/* ================= Recherche par titre (V-B.1.6.3) ================= */
+/* ================= Recherche par titre (V-B.1.9.0) ================= */
 let _titleResults=[];
 async function searchByTitle(){
   const q=document.getElementById("titleSearch").value.trim();
@@ -930,7 +1140,7 @@ async function lookupISBN(){
   out.innerHTML=`<p style="margin-top:10px;color:var(--muted)">Recherche en cours…</p>`;
   let found=null;
   /* cascade : l'API Google Books rate souvent des ISBN (surtout 979-) via "isbn:" ;
-     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.6.3) */
+     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.9.0) */
   const gbQueries=[`isbn:${isbn}`,`"${isbn}"`,isbn];
   let lastErr="";
   for(const q of gbQueries){
@@ -959,7 +1169,7 @@ async function lookupISBN(){
     }catch(e){if(!lastErr)lastErr="réseau : "+e.message;}
   }
   /* 3e recours : BnF (catalogue général, SRU/Dublin Core) — très complet sur l'édition
-     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.6.3) */
+     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.9.0) */
   if(!found){
     try{ found=await fetchBnf(isbn); }
     catch(e){if(!lastErr)lastErr="BnF : "+e.message;}
