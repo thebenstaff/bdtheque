@@ -8,7 +8,7 @@
 <meta name="apple-mobile-web-app-title" content="Ma BDthèque">
 <link rel="apple-touch-icon" href="icon.png">
 <link rel="icon" type="image/png" href="icon.png">
-<title>Ma BDthèque — V-B.1.27.0</title>
+<title>Ma BDthèque — V-B.1.28.0</title>
 <style>
 :root{
   --ink:#22242b;        /* encre */
@@ -311,6 +311,8 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
       <button type="button" class="chip" id="cLu" onclick="this.classList.toggle('on')">Lu</button>
       <button type="button" class="chip" id="cEO" onclick="this.classList.toggle('on')">Édition originale</button>
       <button type="button" class="chip" id="cDed" onclick="this.classList.toggle('on')">Dédicacé</button>
+      <button type="button" class="chip" id="cPal" onclick="this.classList.toggle('on')">📚 PAL</button>
+      <button type="button" class="chip" id="cEnvie" onclick="this.classList.toggle('on')">★ Envie</button>
     </div>
     <label>Support (coche les deux si tu as les deux)</label>
     <div class="toolbar">
@@ -332,9 +334,9 @@ label{font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.0
 
 <script>
 "use strict";
-const APP_VERSION="V-B.1.27.0";
-let apiThrottled=false,googleCooldownUntil=0; /* Google Books : quarantaine non bloquante (V-B.1.27.0) */
-/* Régulation du débit Google (V-B.1.27.0) : au moins 1,1 s entre deux appels
+const APP_VERSION="V-B.1.28.0";
+let apiThrottled=false,googleCooldownUntil=0; /* Google Books : quarantaine non bloquante (V-B.1.28.0) */
+/* Régulation du débit Google (V-B.1.28.0) : au moins 1,1 s entre deux appels
    Google -> ~90 req/100 s, sous le seuil de blocage (~100/100 s). */
 let lastGoogleCall=0;
 async function googleThrottle(){
@@ -364,7 +366,7 @@ const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 const esc=s=>String(s||"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 /* qesc : pour injecter un nom dans une chaîne JS d'un attribut onclick.
    Échappe d'abord pour JS (\' et \\), puis pour HTML — corrige le bug des
-   séries à apostrophe type "L'Attaque des Titans" (V-B.1.27.0) */
+   séries à apostrophe type "L'Attaque des Titans" (V-B.1.28.0) */
 const qesc=s=>esc(String(s||"").replace(/\\/g,"\\\\").replace(/'/g,"\\'"));
 
 /* ================= Navigation ================= */
@@ -496,7 +498,7 @@ function selectAllSeries(){
   for(const s of visible) serieBulkSel.add(s.nom);
   updateCollResults(); toast(`${serieBulkSel.size} séries sélectionnées`);
 }
-/* Sélection multiple : onclick en ligne avec index numérique (V-B.1.27.0) —
+/* Sélection multiple : onclick en ligne avec index numérique (V-B.1.28.0) —
    insensible aux apostrophes/guillemets des noms, et les attributs onclick
    sont nativement cliquables sur Safari iOS (contrairement à la délégation). */
 function toggleSerieBulkMode(){
@@ -614,7 +616,8 @@ function toggleBulkMode(nom){
 }
 function toggleBulkSel(id){
   if(bulkSel.has(id)) bulkSel.delete(id); else bulkSel.add(id);
-  renderSerieSheet(bulkSerieName);
+  if(wishBulkMode&&view==="wish") render();
+  else renderSerieSheet(bulkSerieName);
 }
 function bulkApply(field,value){
   for(const id of bulkSel){
@@ -624,7 +627,9 @@ function bulkApply(field,value){
       if(field==="envie") a.envie=value;
     if(field==="support") a.support=[value];
   }
-  const n=bulkSel.size; persist(); renderSerieSheet(bulkSerieName); render();
+  const n=bulkSel.size; persist();
+  if(document.getElementById("ovSerie").classList.contains("open")) renderSerieSheet(bulkSerieName);
+  render();
   toast(`${n} album${n>1?"s":""} mis à jour`);
 }
 function bulkDelete(){
@@ -677,7 +682,7 @@ function renderSerieSheet(nom){
       <button class="chip ${bulkMode?"on":""}" onclick="toggleBulkMode('${qesc(nom)}')">${bulkMode?"✕ Annuler la sélection":"☑️ Sélectionner plusieurs"}</button>
       ${!bulkMode?`<span style="font-size:.72rem;color:var(--muted)">Balaie ➜ un album : franc = lu/non lu, léger = menu · ➜ franc = poubelle</span>`:""}
     </div>`;
-  /* tomes manquants et disponibles (V-B.1.27.0) : visibles aussi dans la fiche série */
+  /* tomes manquants et disponibles (V-B.1.28.0) : visibles aussi dans la fiche série */
   const nbDeclN=(db.series[nom]&&db.series[nom].nbTomes)||0;
   const maxT=Math.max(...s.albums.map(a=>a.tome||0),nbDeclN,0);
   const byTome=new Map(); for(const a of s.albums) if(a.tome&&a.possede) byTome.set(a.tome,a);
@@ -841,7 +846,12 @@ function markLuJusqua(nom){
 }
 
 /* ================= Envies ================= */
-let wishExpanded=new Set(), wishFilterSupport="";
+let wishExpanded=new Set(), wishFilterSupport="", wishBulkMode=false, _wishIds=[];
+function toggleWishBulkMode(){
+  wishBulkMode=!wishBulkMode; bulkSel.clear();
+  if(wishBulkMode) _wishGroups.forEach(n=>wishExpanded.add(n)); /* tout déplier pour voir ce qu'on coche */
+  render();
+}
 function toggleWishGroup(i){
   const nom=_wishGroups[i]; if(nom===undefined)return;
   if(wishExpanded.has(nom)) wishExpanded.delete(nom); else wishExpanded.add(nom);
@@ -864,12 +874,13 @@ function renderWish(){
       onclick="wishFilterSupport='${v}';render()">${l}</button>`).join("")}
     <button class="chip" onclick="_wishGroups.forEach(n=>wishExpanded.add(n));render()">▾ Tout déplier</button>
     <button class="chip" onclick="wishExpanded.clear();render()">▸ Tout replier</button>
+    <button class="chip ${wishBulkMode?"on":""}" onclick="toggleWishBulkMode()">${wishBulkMode?"✕ Annuler":"☑️ Sélectionner"}</button>
   </div>
   <h2 class="display" style="text-transform:uppercase;margin:6px 0 10px">${isPal?"Pile à lire":"Mes envies · liste d'achats"}</h2>`;
   if(!list.length) return h+(isPal
     ? `<div class="empty"><b>Ta pile à lire est vide${wishFilterSupport?" pour ce support":""}.</b><br>Balaie un album vers la droite et touche <b>📚 PAL</b> pour y ranger ce que tu comptes lire prochainement.</div>`
     : `<div class="empty"><b>Aucune envie${wishFilterSupport?" pour ce support":""}.</b><br>Touche un tome en pointillés sur une étagère pour l'ajouter ici.</div>`);
-  /* regroupement par série dès 2 tomes, repliable (V-B.1.27.0) */
+  /* regroupement par série dès 2 tomes, repliable (V-B.1.28.0) */
   const groups=new Map();
   for(const a of list){
     const k=(a.serie||"Sans série").trim();
@@ -877,19 +888,34 @@ function renderWish(){
     groups.get(k).push(a);
   }
   _wishGroups=[...groups.keys()].filter(k=>groups.get(k).length>1);
+  _wishIds=list.map(a=>a.id);
+  const row=a=>albumRow(a,isPal?"owned":"wish",wishBulkMode,bulkSel.has(a.id));
   let gi=0;
   for(const [serie,items] of groups){
     if(items.length>1){
       const open=wishExpanded.has(serie);
       h+=`<div class="wish-group" onclick="toggleWishGroup(${gi})">
         <span>${open?"▾":"▸"} ${esc(serie)}</span>
-        <span class="wish-count">${items.length} tomes${isPal?"":items.some(x=>x.possede)?"":""}</span></div>`;
+        <span class="wish-count">${items.length} tomes</span></div>`;
       gi++;
-      if(open) for(const a of items) h+=albumRow(a,isPal?"owned":"wish");
+      if(open) for(const a of items) h+=row(a);
     }else{
-      for(const a of items) h+=albumRow(a,isPal?"owned":"wish");
+      for(const a of items) h+=row(a);
     }
   }
+  if(wishBulkMode)
+    h+=`<div class="toolbar bulkbar" style="bottom:76px;padding:10px;margin-top:6px;border-top:2px solid #d8d3c6;border-radius:var(--radius)">
+      <span style="font-size:.8rem;font-weight:700;width:100%">${bulkSel.size} sélectionné${bulkSel.size>1?"s":""}</span>
+      <button class="chip" onclick="_wishIds.forEach(i=>bulkSel.add(i));render()">☑️ Tout sélectionner</button>
+      <button class="chip" onclick="bulkSel.clear();render()">Tout désélectionner</button>
+      ${bulkSel.size?`
+      <button class="chip" onclick="bulkApply('pal',true)">📚 + PAL</button>
+      <button class="chip" onclick="bulkApply('pal',false)">📚 − PAL</button>
+      <button class="chip" onclick="bulkApply('envie',true)">★ + Envie</button>
+      <button class="chip" onclick="bulkApply('envie',false)">★ − Envie</button>
+      <button class="chip" onclick="bulkApply('support','physique')">📕 Physique</button>
+      <button class="chip" onclick="bulkApply('support','scan')">💻 Scan</button>`:""}
+    </div>`;
   return h;
 }
 function togglePal(id){
@@ -949,7 +975,7 @@ function renderStats(){
   h+=`<p style="text-align:center;color:var(--muted);font-size:.72rem;margin-top:16px">${APP_VERSION} · données stockées dans ce navigateur · pense à exporter régulièrement</p>`;
   const pend=db.albums.filter(a=>a.pending&&a.isbn);
   const noCover=db.albums.filter(a=>a.possede&&a.isbn&&!a.cover);
-  /* séries sans résumé dont un tome a un ISBN (V-B.1.27.0) */
+  /* séries sans résumé dont un tome a un ISBN (V-B.1.28.0) */
   const seriesResumables=seriesMap().filter(s=>{
     const meta=db.series[s.nom]||{};
     if(meta.resume) return false;
@@ -988,7 +1014,7 @@ function renderStats(){
   return h;
 }
 let bulkStop=false;
-/* Anti-veille pendant les lots (V-B.1.27.0) : Wake Lock (souvent ignoré par
+/* Anti-veille pendant les lots (V-B.1.28.0) : Wake Lock (souvent ignoré par
    Safari iOS) DOUBLÉ d'une micro-vidéo muette en boucle — la lecture vidéo
    active empêche iOS de verrouiller l'écran là où le Wake Lock échoue. */
 let wakeLock=null,keepVideo=null;
@@ -1049,14 +1075,14 @@ async function bulkFetchResumes(includeTried){
     let resume="";
     apiThrottled=false;
     try{const r=await tryFetchISBN(t1.isbn,true); if(r&&r.resume) resume=r.resume;}catch(e){}
-    /* secours indépendant de Google (V-B.1.27.0) */
+    /* secours indépendant de Google (V-B.1.28.0) */
     if(!resume){try{resume=await fetchResumeOpenLibrary(t1.isbn.replace(/[^0-9X]/gi,""));}catch(e){}}
     const m={...(db.series[s.nom]||{})};
     if(resume){m.resume=resume; ok++;}
     else if(apiThrottled){reportes++;} /* Google en quarantaine ET OpenLibrary vide : reporté */
     else m.resumeTried=true;
     db.series[s.nom]=m; persist();
-    /* pas de pause fixe : googleThrottle() régule (V-B.1.27.0) */
+    /* pas de pause fixe : googleThrottle() régule (V-B.1.28.0) */
   }
   const interrompu=bulkStop&&i<series.length;
   bulkFlagClear(); wakeOff();
@@ -1082,7 +1108,7 @@ async function bulkFetchCovers(includeTried){
     apiThrottled=false;
     try{
       const isbn=a.isbn.replace(/[^0-9X]/gi,"");
-      /* Ordre économe en quota (V-B.1.27.0) :
+      /* Ordre économe en quota (V-B.1.28.0) :
          1) générateur OpenLibrary (gratuit, 0 quota Google)
          2) fiche Google par ISBN (1 appel) — rapporte aussi le résumé
          3) recherche Google par titre (1 appel) en dernier recours */
@@ -1100,7 +1126,7 @@ async function bulkFetchCovers(includeTried){
     else if(apiThrottled){reportes++;} /* Google indisponible pour cet album : reporté, pas marqué en échec */
     else a.coverTried=true; /* vrai échec, toutes sources tentées */
     persist(); /* sauvegarde immédiate : rien n'est perdu si on ferme l'appli */
-    /* pas de pause fixe : googleThrottle() régule déjà le débit (V-B.1.27.0) */
+    /* pas de pause fixe : googleThrottle() régule déjà le débit (V-B.1.28.0) */
   }
   const interrompu=bulkStop&&i<list.length;
   bulkFlagClear(); wakeOff();
@@ -1128,7 +1154,7 @@ async function bulkUpdatePending(){
       if((!a.titre||a.titre===a.isbn)&&found.titre) a.titre=found.titre;
       a.pending=false; ok++; persist(); /* sauvegarde immédiate à chaque succès */
     }
-    /* pas de pause fixe : googleThrottle() régule (V-B.1.27.0) */
+    /* pas de pause fixe : googleThrottle() régule (V-B.1.28.0) */
   }
   const interrompu=bulkStop&&i<pend.length;
   bulkFlagClear(); wakeOff();
@@ -1144,7 +1170,7 @@ async function tryFetchISBN(isbnRaw,wantResume){
   const isbn=isbnRaw.replace(/[^0-9X]/gi,"");
   if(isbn.length<10) return null;
   if(Date.now()>=googleCooldownUntil){
-  /* une seule variante de requête (V-B.1.27.0) : les variantes supplémentaires
+  /* une seule variante de requête (V-B.1.28.0) : les variantes supplémentaires
      rapportaient rarement et coûtaient jusqu'à 2 appels de quota par album */
   for(const q of [`isbn:${isbn}`]){
     try{
@@ -1188,7 +1214,7 @@ async function tryFetchISBN(isbnRaw,wantResume){
   return null;
 }
 
-/* ================= BnF : appel + nettoyage de la notice (V-B.1.27.0) =================
+/* ================= BnF : appel + nettoyage de la notice (V-B.1.28.0) =================
    Le champ dc:title de la BnF contient souvent la notice complète
    ("Titre. [Tome un] / scénario, X ; dessin, Y ; ..."). On la découpe :
    titre propre / mentions de responsabilité (scénariste, dessinateur),
@@ -1266,7 +1292,7 @@ async function fetchBnf(isbn){
   const creators=[...rec.getElementsByTagNameNS("*","creator")].map(e=>cleanBnfName(e.textContent)).filter(Boolean);
   const auteurs=auteursTitre||creators.join(", ");
   const editeur=get("publisher").replace(/\s*\([^)]+\)\s*$/,"").trim(); /* retire "(Paris)" */
-  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.27.0 : couverture de secours */
+  const cover=await fetchCoverOnly(titre,auteurs,isbn); /* V-B.1.28.0 : couverture de secours */
   return {titre,tome,auteurs,editeur,cover,resume:"",source:"bnf"};
 }
 
@@ -1294,6 +1320,8 @@ function openEdit(id){
   document.getElementById("isbnInput").value=a.isbn||"";
   document.getElementById("cOwn").classList.toggle("on",!!a.possede);
   document.getElementById("cLu").classList.toggle("on",!!a.lu);
+  document.getElementById("cPal").classList.toggle("on",!!a.pal);
+  document.getElementById("cEnvie").classList.toggle("on",!!a.envie);
   document.getElementById("cEO").classList.toggle("on",!!a.eo);
   document.getElementById("cDed").classList.toggle("on",!!a.dedicace);
   const sup=Array.isArray(a.support)?a.support:["physique"];
@@ -1315,7 +1343,7 @@ function addPretField(val){
   }
   f.value=val;
 }
-/* ================= Bascule de support (V-B.1.27.0) =================
+/* ================= Bascule de support (V-B.1.28.0) =================
    Album : cycle Physique -> Scan -> Les deux -> Physique.
    Série : cycle uniforme si homogène ; si mixte (ex. T1-25 physique, suite en
    scan), on protège la répartition et on renvoie vers la sélection multiple. */
@@ -1350,7 +1378,7 @@ function cycleSupportSerie(nom){
   persist(); render(); toast(`Série entière : ${supportLabel(next)}`);
 }
 
-/* ================= Balayage façon iOS Mail (V-B.1.27.0) =================
+/* ================= Balayage façon iOS Mail (V-B.1.28.0) =================
    Glissement léger -> le menu d'action reste affiché (comme Mail) ;
    glissement franc -> l'action se déclenche directement.
    Droite = action principale (lu/non-lu, tout lu) ; Gauche = suppression. */
@@ -1365,7 +1393,7 @@ function resetSwipe(el){
 document.addEventListener("touchstart",e=>{
   const el=e.target.closest("[data-swipe-id]");
   /* ne referme la carte révélée que si on touche AILLEURS que dans son bloc
-     (sinon la carte glisse sous le doigt et le clic atterrit dessus — bug V-B.1.27.0) */
+     (sinon la carte glisse sous le doigt et le clic atterrit dessus — bug V-B.1.28.0) */
   if(revealedEl&&revealedEl!==el){
     const wrap=revealedEl.closest(".swipe-wrap")||revealedEl.parentNode;
     if(!wrap||!wrap.contains(e.target)) resetSwipe(revealedEl);
@@ -1473,7 +1501,7 @@ function clearForm(){
   document.getElementById("titleOut").innerHTML="";
   document.getElementById("fType").value="BD";
   document.getElementById("cOwn").classList.add("on");
-  ["cLu","cEO","cDed","cScan"].forEach(i=>document.getElementById(i).classList.remove("on"));
+  ["cLu","cEO","cDed","cScan","cPal","cEnvie"].forEach(i=>document.getElementById(i).classList.remove("on"));
   document.getElementById("cPhys").classList.add("on");
   document.getElementById("cPending").classList.remove("on");
   document.getElementById("btnDelete").style.display="none";
@@ -1502,6 +1530,8 @@ function saveAlbum(){
     resume:document.getElementById("fResume").value.trim(),
     possede:document.getElementById("cOwn").classList.contains("on"),
     lu:document.getElementById("cLu").classList.contains("on"),
+    pal:document.getElementById("cPal").classList.contains("on"),
+    envie:document.getElementById("cEnvie").classList.contains("on"),
     eo:document.getElementById("cEO").classList.contains("on"),
     dedicace:document.getElementById("cDed").classList.contains("on"),
     prete:(document.getElementById("fPrete")||{value:""}).value.trim(),
@@ -1522,7 +1552,7 @@ function deleteAlbum(){
 }
 function closeSheet(id){document.getElementById(id).classList.remove("open");if(id==="ovAdd")stopScan();}
 
-/* ================= Couverture depuis les photos (V-B.1.27.0) =================
+/* ================= Couverture depuis les photos (V-B.1.28.0) =================
    Compression côté client pour rester léger dans le stockage du navigateur
    (localStorage ~5-10 Mo au total selon les appareils). */
 function handleCoverFile(ev){
@@ -1554,7 +1584,7 @@ function showCoverPreview(url){
   p.innerHTML=url?`<img src="${esc(url)}" style="width:70px;height:96px;object-fit:cover;border-radius:4px;margin-top:8px" alt="">`:"";
 }
 
-/* ================= Recherche par titre (V-B.1.27.0) ================= */
+/* ================= Recherche par titre (V-B.1.28.0) ================= */
 let _titleResults=[];
 async function searchByTitle(){
   const q=document.getElementById("titleSearch").value.trim();
@@ -1608,7 +1638,7 @@ async function lookupISBN(){
   out.innerHTML=`<p style="margin-top:10px;color:var(--muted)">Recherche en cours…</p>`;
   let found=null;
   /* cascade : l'API Google Books rate souvent des ISBN (surtout 979-) via "isbn:" ;
-     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.27.0) */
+     on retente alors en recherche libre sur le numéro. (bug corrigé V-B.1.28.0) */
   const gbQueries=[`isbn:${isbn}`,`"${isbn}"`,isbn];
   let lastErr="";
   for(const q of gbQueries){
@@ -1638,7 +1668,7 @@ async function lookupISBN(){
     }catch(e){if(!lastErr)lastErr="réseau : "+e.message;}
   }
   /* 3e recours : BnF (catalogue général, SRU/Dublin Core) — très complet sur l'édition
-     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.27.0) */
+     française mais pas d'image de couverture, et notice brute à nettoyer (V-B.1.28.0) */
   if(!found){
     try{ found=await fetchBnf(isbn); }
     catch(e){if(!lastErr)lastErr="BnF : "+e.message;}
